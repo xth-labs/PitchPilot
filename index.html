@@ -1,10 +1,11 @@
 
 
 
+
 <!DOCTYPE html>
 <!--
  ╔══════════════════════════════════════════════════════════════════════════════╗
- ║                            🎤  PitchPilot 1.0  🎤                           ║
+		                     🎤  PitchPilot 1.0  🎤               
  ╠══════════════════════════════════════════════════════════════════════════════╣
  ║  A browser-only karaoke pitch trainer that combines:                         ║
  ║    • Spotify's Basic Pitch (ML note detection) — runs fully in-browser       ║
@@ -28,7 +29,7 @@
  ║                                                                              ║ 
  ║  YOU CAN ALWAYS FIND ME ON GITHUB IF YOU HAVE FURTHER QUESTIONS              ║   
  ║  https://github.com/onlyGod-can-Intimidate-me/PitchPilot                     ║
- ║  coded by John Tsorotes                                                      ║                        ║ 
+ ║  coded by John Tsorotes                                                      ║ 
  ╚══════════════════════════════════════════════════════════════════════════════╝
 -->
 <html lang="en">
@@ -738,9 +739,11 @@ function loadFile(file) {
 // Wire YouTube button inside module scope
 document.getElementById('yt-btn').addEventListener('click', () => {
     const ytUrl  = document.getElementById('yt-url').value.trim();
-    const apiKey = localStorage.getItem('rapid_key') || document.getElementById('rapid-key').value.trim();
+    const apiKey = document.getElementById('rapid-key').value.trim() || localStorage.getItem('rapid_key');
     if (!ytUrl)  { alert('Paste a YouTube URL first!'); return; }
     if (!apiKey) { alert('Paste your RapidAPI key first!'); return; }
+    // Save API key to localStorage for convenience
+    if (apiKey) localStorage.setItem('rapid_key', apiKey);
     const match = ytUrl.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
     if (!match) { alert('Could not find YouTube video ID in that URL'); return; }
     showCaptcha(() => doFetchYoutube(match[1], apiKey));
