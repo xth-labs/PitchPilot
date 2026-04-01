@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>🎤 PitchPilot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── WELCOME MODAL ────────────────────────────────────────────────────── */
+        #welcome-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        #welcome-modal.hidden {
+            display: none;
+        }
+
+        .welcome-content {
+            background: #111;
+            border: 2px solid #E91E63;
+            border-radius: 16px;
+            padding: 30px 24px;
+            text-align: center;
+            max-width: 90vw;
+            width: 100%;
+        }
+
+        .welcome-title {
+            font-size: clamp(24px, 8vw, 48px);
+            font-weight: bold;
+            color: #E91E63;
+            margin-bottom: 16px;
+            letter-spacing: 2px;
+        }
+
+        .welcome-text {
+            font-size: clamp(14px, 4vw, 18px);
+            color: #ccc;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+
+        .welcome-input {
+            width: 100%;
+            padding: 14px;
+            font-size: clamp(13px, 3vw, 16px);
+            border: 2px solid #333;
+            border-radius: 8px;
+            background: #0f0f0f;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        .welcome-btn {
+            width: 100%;
+            padding: clamp(12px, 3vw, 16px);
+            font-size: clamp(14px, 3vw, 18px);
+            background: #E91E63;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 1px;
+        }
+
+        .welcome-btn:active {
+            transform: scale(0.96);
+        }
+
+        .welcome-btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        /* ── MAIN CONTAINER ────────────────────────────────────────────────────── */
+        #app-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 8px;
+            gap: 8px;
+            overflow: hidden;
+        }
+
+        /* PORTRAIT MODE (default) */
+        @media (orientation: portrait) {
+            #app-container {
+                flex-direction: column;
+            }
+
+            #lyrics-section {
+                flex: 0 0 40%;
+                min-height: 200px;
+            }
+
+            #canvas-wrap {
+                flex: 0 0 35%;
+                min-height: 150px;
+            }
+
+            #controls-section {
+                flex: 0 0 25%;
+                overflow-y: auto;
+            }
+        }
+
+        /* LANDSCAPE MODE — buttons tiny, bottom row, lyrics HUGE */
+        @media (orientation: landscape) {
+            #app-container {
+                flex-direction: column;
+            }
+
+            #lyrics-section {
+                flex: 0 0 55%;
+                min-height: auto;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            #canvas-wrap {
+                flex: 0 0 20%;
+                min-height: auto;
+            }
+
+            #controls-section {
+                flex: 0 0 25%;
+                overflow-y: auto;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                align-content: flex-end;
+            }
+
+            #controls-section button {
+                flex: 0 1 calc(25% - 5px);
+                padding: 6px 4px !important;
+                font-size: 10px !important;
+                min-width: 60px;
+            }
+
+            .btn-row {
+                display: flex !important;
+                gap: 4px !important;
+                width: 100%;
+            }
+
+            .btn-row button {
+                flex: 1;
+                padding: 6px 4px !important;
+                font-size: 10px !important;
+            }
+        }
+
+        /* ── LYRICS SECTION (BIG TEXT) ────────────────────────────────────────── */
+        #lyrics-section {
+            background: #000;
+            border-radius: 10px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            text-align: center;
+        }
+
+        #big-word {
+            font-size: clamp(48px, 15vw, 100px);
+            font-weight: bold;
+            letter-spacing: 4px;
+            color: #fff;
+            line-height: 1;
+            margin-bottom: 12px;
+            transition: color 0.08s ease;
+        }
+
+        #big-word.correct {
+            color: #4CAF50;
+        }
+
+        #big-word.too-high {
+            color: #c8e600;
+        }
+
+        #big-word.too-low {
+            color: #f44336;
+        }
+
+        #note-name {
+            font-size: clamp(20px, 8vw, 40px);
+            font-weight: bold;
+            letter-spacing: 6px;
+            color: #aaa;
+            transition: color 0.08s ease;
+        }
+
+        #note-name.correct {
+            color: #4CAF50;
+        }
+
+        #note-name.too-high {
+            color: #c8e600;
+        }
+
+        #note-name.too-low {
+            color: #f44336;
+        }
+
+        /* ── KEY LEGEND (always visible, top-right) ────────────────────────────── */
+        #key-legend {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            font-size: clamp(10px, 2.5vw, 13px);
+            font-weight: bold;
+            line-height: 1.8;
+            text-align: right;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px;
+            border-radius: 6px;
+        }
+
+        .k-high {
+            color: #c8e600;
+        }
+
+        .k-low {
+            color: #f44336;
+        }
+
+        .k-correct {
+            color: #4CAF50;
+        }
+
+        /* ── CANVAS (minimized in landscape) ──────────────────────────────────── */
+        #canvas-wrap {
+            border: 1px solid #1a1a1a;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #080808;
+        }
+
+        #vocal-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ── CONTROLS SECTION ────────────────────────────────────────────────────  */
+        #controls-section {
+            background: #0a0a0a;
+            border-radius: 8px;
+            padding: 8px;
+        }
+
+        #status-bar {
+            background: #FF9800;
+            border-radius: 6px;
+            padding: 8px;
+            margin-bottom: 8px;
+            font-size: 11px;
+            font-weight: bold;
+            text-align: center;
+            color: #000;
+            display: none;
+        }
+
+        #status-bar.visible {
+            display: block;
+        }
+
+        #progress-fill {
+            height: 3px;
+            background: #000;
+            width: 0%;
+            transition: width 0.3s;
+            border-radius: 2px;
+            margin-top: 4px;
+        }
+
+        .btn-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+
+        .btn-row.single {
+            grid-template-columns: 1fr;
+        }
+
+        button {
+            padding: 11px 8px;
+            font-size: 13px;
+            cursor: pointer;
+            border: none;
+            border-radius: 8px;
+            background: #E91E63;
+            color: white;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            touch-action: manipulation;
+            width: 100%;
+            letter-spacing: 1px;
+        }
+
+        button:active {
+            transform: scale(0.96);
+        }
+
+        button:disabled {
+            background: #1a1a1a;
+            color: #333;
+        }
+
+        #analyse-btn {
+            background: #FF9800;
+        }
+
+        #play-btn {
+            background: #4CAF50;
+        }
+
+        #stop-btn {
+            background: #444;
+        }
+
+        #mic-btn {
+            background: #00BCD4;
+        }
+
+        /* ── STATS ────────────────────────────────────────────────────────────── */
+        #stats-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .stat {
+            background: #111;
+            border: 2px solid #1e1e1e;
+            border-radius: 6px;
+            padding: 6px 4px;
+            text-align: center;
+            font-size: 10px;
+            color: #555;
+        }
+
+        .stat .v {
+            font-size: 12px;
+            font-weight: bold;
+            color: #E91E63;
+            display: block;
+        }
+
+        #song-progress-wrap {
+            background: #111;
+            border-radius: 4px;
+            height: 4px;
+            margin-bottom: 8px;
+            overflow: hidden;
+        }
+
+        #song-progress-fill {
+            height: 100%;
+            background: #E91E63;
+            width: 0%;
+            transition: width 0.5s linear;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════════════════════
+     WELCOME MODAL
+     ════════════════════════════════════════════════════════════════════════════ -->
+<div id="welcome-modal">
+    <div class="welcome-content">
+        <div class="welcome-title">🎤 PitchPilot</div>
+        <div class="welcome-text">
+            The app that lets you check your pitch when singing against any song you like from YouTube.
+            <br><br>
+            Please enter the YouTube link of the song you wish to cover, then click START.
+        </div>
+        <input
+            type="text"
+            id="welcome-url"
+            class="welcome-input"
+            placeholder="Paste YouTube URL..."
+            onkeydown="if(event.key==='Enter') startPitchPilot()"
+        >
+        <button class="welcome-btn" onclick="startPitchPilot()">▶ START</button>
+        <div id="welcome-error" style="color: #f44336; font-size: 12px; margin-top: 12px;"></div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════════
+     MAIN APP
+     ════════════════════════════════════════════════════════════════════════════ -->
+<div id="app-container" style="display:none;">
+
+    <!-- LYRICS (BIG CENTRE) -->
+    <div id="lyrics-section">
+        <div id="key-legend">
+            <div class="k-correct">🟢 CORRECT</div>
+            <div class="k-high">🟡 TOO HIGH</div>
+            <div class="k-low">🔴 TOO LOW</div>
+        </div>
+        <div id="big-word">Ready</div>
+        <div id="note-name">—</div>
+    </div>
+
+    <!-- CANVAS (NOTES TIMELINE) -->
+    <div id="canvas-wrap">
+        <canvas id="vocal-canvas"></canvas>
+    </div>
+
+    <!-- CONTROLS (BUTTONS + STATS) -->
+    <div id="controls-section">
+        <div id="status-bar">
+            <span id="status-text">Analysing...</span>
+            <div id="progress-fill"></div>
+        </div>
+
+        <div id="song-progress-wrap">
+            <div id="song-progress-fill"></div>
+        </div>
+
+        <div id="stats-row">
+            <div class="stat"><span style="color:#555;">MIC</span><span class="v" id="mic-v">—</span></div>
+            <div class="stat"><span style="color:#555;">YOU</span><span class="v" id="you-v">—</span></div>
+            <div class="stat"><span style="color:#555;">NEED</span><span class="v" id="exp-v">—</span></div>
+        </div>
+
+        <div class="btn-row single">
+            <button id="mic-btn" onclick="window.requestMicrophoneAccess()">🎤 MIC</button>
+        </div>
+
+        <div class="btn-row">
+            <button id="play-btn" onclick="window.play()">▶ PLAY</button>
+            <button id="stop-btn" onclick="window.stop()">⏹ STOP</button>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden file input for audio -->
+<input type="file" id="audio-file" accept="audio/*" style="display:none;">
+
+<script>
+    // ══════════════════════════════════════════════════════════════════════════
+    // BASIC SETUP
+    // ══════════════════════════════════════════════════════════════════════════
+    const WORKER_URL = 'https://lingering-mouse-8c7c.tsorotes-john.workers.dev/youtube';
+    let audioContext;
+    let audioBuffer;
+    let audioSource;
+    let isPlaying = false;
+    let playbackStart = 0;
+    let pills = [];
+    let currentExpected = null;
+    let currentMic = null;
+    let canvas, ctx;
+    let rafId;
+
+    // RapidAPI key — get from localStorage or use placeholder
+    let rapidApiKey = localStorage.getItem('rapid_key') || '';
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // WELCOME MODAL FLOW
+    // ══════════════════════════════════════════════════════════════════════════
+    async function startPitchPilot() {
+        const url = document.getElementById('welcome-url').value.trim();
+        const errorEl = document.getElementById('welcome-error');
+        errorEl.textContent = '';
+
+        if (!url) {
+            errorEl.textContent = '❌ Please paste a YouTube URL';
+            return;
+        }
+
+        // Extract video ID
+        const match = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+        if (!match) {
+            errorEl.textContent = '❌ Could not find YouTube video ID';
+            return;
+        }
+
+        const videoId = match[1];
+
+        // Get RapidAPI key (for now, you'll need to paste it)
+        rapidApiKey = prompt('Paste your RapidAPI key:', localStorage.getItem('rapid_key') || '');
+        if (!rapidApiKey) {
+            errorEl.textContent = '❌ RapidAPI key required';
+            return;
+        }
+
+        localStorage.setItem('rapid_key', rapidApiKey);
+
+        // Hide modal, show app
+        document.getElementById('welcome-modal').classList.add('hidden');
+        document.getElementById('app-container').style.display = 'flex';
+
+        // Init audio & canvas
+        initAudio();
+        initCanvas();
+
+        // Download + analyse
+        await downloadAndAnalyse(videoId);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // DOWNLOAD + AUTO ANALYSE
+    // ══════════════════════════════════════════════════════════════════════════
+    async function downloadAndAnalyse(videoId) {
+        setStatus('⏳ Downloading audio...', 10);
+
+        try {
+            const res = await fetch(WORKER_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ videoId, apiKey: rapidApiKey })
+            });
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ error: 'Download failed' }));
+                throw new Error(err.error || 'Download error');
+            }
+
+            const audioBlob = await res.blob();
+            setStatus('⏳ Loading audio...', 30);
+
+            // Decode audio
+            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            audioBuffer = await audioContext.decodeAudioData(await audioBlob.arrayBuffer());
+
+            setStatus('⏳ Detecting notes...', 50);
+
+            // Run Basic Pitch
+            const { BasicPitchModel } = await import('https://esm.sh/@spotify/basic-pitch@0.4.0');
+            const model = await BasicPitchModel.create();
+            const output = await model.evaluateModel(audioBuffer);
+
+            const contourHz = output.contour;
+            pills = hzToPills(contourHz);
+
+            setStatus('✅ Ready to sing!', 100);
+            document.getElementById('big-word').textContent = 'GO!';
+            document.getElementById('big-word').className = 'correct';
+
+            setTimeout(() => hideStatus(), 2000);
+
+        } catch (err) {
+            setStatus('❌ ' + err.message, 0);
+            console.error(err);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // HELPERS
+    // ══════════════════════════════════════════════════════════════════════════
+    function setStatus(txt, pct) {
+        document.getElementById('status-bar').classList.add('visible');
+        document.getElementById('status-text').textContent = txt;
+        document.getElementById('progress-fill').style.width = pct + '%';
+    }
+
+    function hideStatus() {
+        document.getElementById('status-bar').classList.remove('visible');
+    }
+
+    function hzToPills(contourHz) {
+        const pills = [];
+        const timeStep = 0.01; // Basic Pitch outputs ~100 frames/sec
+        const LANE_BASE = 36; // C3 in MIDI
+        const N_LANES = 25;
+
+        for (let i = 0; i < contourHz.length; i++) {
+            const hz = contourHz[i][0]; // confidence in [1]
+            const conf = contourHz[i][1];
+
+            if (hz > 0 && conf > 0.5) {
+                const midi = Math.round(12 * Math.log2(hz / 8.1758) + 12);
+                const lane = Math.max(0, Math.min(N_LANES - 1, midi - LANE_BASE));
+                const timeMs = i * timeStep * 1000;
+
+                pills.push({
+                    timeMs,
+                    durMs: timeStep * 1000,
+                    note: midiToName(midi),
+                    lane,
+                    state: 'upcoming'
+                });
+            }
+        }
+
+        return pills;
+    }
+
+    function midiToName(midi) {
+        const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        return notes[midi % 12] + Math.floor(midi / 12);
+    }
+
+    function initAudio() {
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }
+
+    function initCanvas() {
+        canvas = document.getElementById('vocal-canvas');
+        ctx = canvas.getContext('2d');
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+    }
+
+    function resizeCanvas() {
+        canvas.width = canvas.offsetWidth || 600;
+        canvas.height = canvas.offsetHeight || 150;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // PLAYBACK CONTROLS
+    // ══════════════════════════════════════════════════════════════════════════
+    window.play = function() {
+        if (!audioBuffer) return;
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        if (audioContext.state === 'suspended') audioContext.resume();
+
+        if (!audioSource) {
+            audioSource = audioContext.createBufferSource();
+            audioSource.buffer = audioBuffer;
+            audioSource.connect(audioContext.destination);
+        }
+
+        isPlaying = true;
+        playbackStart = audioContext.currentTime;
+        audioSource.start();
+        document.getElementById('play-btn').disabled = true;
+
+        loop();
+    };
+
+    window.stop = function() {
+        if (audioSource) {
+            try { audioSource.stop(); } catch (e) {}
+            audioSource = null;
+        }
+        isPlaying = false;
+        document.getElementById('play-btn').disabled = false;
+        cancelAnimationFrame(rafId);
+    };
+
+    function loop() {
+        if (!isPlaying) return;
+
+        const elapsed = (audioContext.currentTime - playbackStart) * 1000;
+
+        // Update progress
+        const songDuration = audioBuffer.duration * 1000;
+        const progress = Math.min(100, (elapsed / songDuration) * 100);
+        document.getElementById('song-progress-fill').style.width = progress + '%';
+
+        // Update lyrics (find nearest pill)
+        const nearestPill = pills.reduce((best, p) => {
+            const dist = Math.abs(p.timeMs - elapsed);
+            return dist < Math.abs((best?.timeMs ?? Infinity) - elapsed) ? p : best;
+        }, null);
+
+        if (nearestPill && Math.abs(nearestPill.timeMs - elapsed) < 2000) {
+            currentExpected = nearestPill.note;
+            document.getElementById('exp-v').textContent = nearestPill.note;
+            document.getElementById('big-word').textContent = nearestPill.note.slice(0, -1) || '♪';
+        } else {
+            document.getElementById('big-word').textContent = '♪';
+            document.getElementById('exp-v').textContent = '—';
+        }
+
+        // Check end
+        if (elapsed > songDuration) {
+            window.stop();
+            return;
+        }
+
+        rafId = requestAnimationFrame(loop);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // MICROPHONE
+    // ══════════════════════════════════════════════════════════════════════════
+    window.requestMicrophoneAccess = async function() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            document.getElementById('mic-btn').style.background = '#4CAF50';
+            document.getElementById('mic-btn').textContent = '🎤 ON';
+        } catch (err) {
+            alert('Microphone access denied');
+        }
+    };
+</script>
+
+</body>
+</html>
