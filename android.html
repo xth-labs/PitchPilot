@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <!--
  ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -760,12 +761,12 @@
             if (micStream) return; // Already have it
             
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            // Got permission - store it but don't process yet
             micStream = stream;
             console.log('✅ Microphone permission granted');
             document.getElementById('mic-btn').disabled = false;
+            document.getElementById('mic-btn').textContent = '🎤 MIC ON';
         } catch (err) {
-            console.log('Mic permission denied:', err.message);
+            console.log('Mic permission denied (optional):', err.message);
             document.getElementById('mic-btn').disabled = true;
         }
     }
@@ -773,8 +774,13 @@
     // Toggle mic on/off
     window.toggleMic = async function() {
         if (!micStream) {
-            alert('Microphone not available. Press PLAY first to request permission.');
-            return;
+            try {
+                micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                console.log('✅ Got microphone permission');
+            } catch (err) {
+                alert('Microphone access denied: ' + err.message);
+                return;
+            }
         }
 
         if (micProcessor) {
@@ -791,7 +797,12 @@
         // Turn ON
         try {
             if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioContext.state === 'suspended') audioContext.resume();
+            if (audioContext.state === 'suspended') await audioContext.resume();
+
+            // Check if method exists
+            if (!audioContext.createMediaStreamAudioSource) {
+                throw new Error('Your browser does not support microphone input');
+            }
 
             const micSource = audioContext.createMediaStreamAudioSource(micStream);
             
@@ -807,7 +818,8 @@
 
         } catch (err) {
             console.error('Mic processing error:', err.message);
-            alert('Error starting microphone: ' + err.message);
+            alert('Error: ' + err.message);
+            micProcessor = null;
         }
     };
 
