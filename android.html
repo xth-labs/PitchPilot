@@ -802,7 +802,7 @@
                         foundGoodCorrelation = true;
                     }
                     if (foundGoodCorrelation) {
-                        const shift = this.parabolicInterpolation(buffer, best_offset, MAX_SAMPLES);
+                        const shift = parabolicInterpolation(buffer, best_offset, MAX_SAMPLES);
                         return sampleRate / (best_offset + shift);
                     }
                 }
