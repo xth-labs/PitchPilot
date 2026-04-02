@@ -674,8 +674,8 @@
         return wordObjects.map(w => ({
             word: w.text || w.word || '?',
             note: assignNoteToWord(w.text),
-            timeMs: (w.start || 0) / 1000,
-            durMs: ((w.end || 0) - (w.start || 0)) / 1000 || 100
+            timeMs: w.start || 0,  // AssemblyAI returns milliseconds already
+            durMs: (w.end || 0) - (w.start || 0) || 100
         }));
     }
 
