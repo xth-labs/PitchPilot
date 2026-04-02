@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<!--
+ ╔══════════════════════════════════════════════════════════════════════════════╗
+		                     🎤  PitchPilot 1.0  🎤               
+ ╠══════════════════════════════════════════════════════════════════════════════╣
+ ║  A browser-only karaoke pitch trainer that combines:                         ║
+ ║    • Spotify's Basic Pitch (ML note detection) — runs fully in-browser       ║
+ ║    • AssemblyAI word-level transcription (optional, API key required)        ║
+ ║    • Web Audio API real-time microphone pitch detection (autocorrelation)    ║
+ ║    • RapidAPI youtube-mp4-mp3-downloader bridge for YouTube → MP3 downloads  ║
+ ║                                                                              ║
+ ║  MODIFIED: Added URL parameter support for auto-loading YouTube videos      ║
+ ║  Usage: pitchpilot.html?video=https://www.youtube.com/watch?v=VIDEO_ID     ║
+ ║         pitchpilot.html?video=VIDEO_ID (11-char ID)                        ║
+ ║                                                                              ║
+ ║  ARCHITECTURE OVERVIEW                                                       ║
+ ║  ─────────────────────                                                       ║
+ ║  1. User loads audio (file drop OR YouTube URL via RapidAPI)                 ║
+ ║  2. "Detect Notes" runs Basic Pitch + AssemblyAI in parallel                 ║
+ ║  3. Notes → pill objects rendered on a scrolling canvas timeline             ║
+ ║  4. On playback, the RAF loop ticks song time, syncs lyrics + expected note  ║
+ ║  5. Mic input is autocorrelated each audio frame → smoothed note name        ║
+ ║  6. Sung note vs. expected note → colour feedback on the big karaoke word    ║
+ ║                                                                              ║
+ ║  DEPENDENCIES (all CDN / ESM — no build step)                                ║
+ ║    @spotify/basic-pitch  1.0.1   https://esm.sh/                             ║
+ ║    AssemblyAI REST API   v2      https://api.assemblyai.com/                 ║
+ ║    youtube-mp4-mp3-downloader (RapidAPI)                                      ║
+ ║                                                                              ║ 
+ ║  YOU CAN ALWAYS FIND ME ON GITHUB IF YOU HAVE FURTHER QUESTIONS              ║   
+ ║  https://github.com/onlyGod-can-Intimidate-me/PitchPilot                     ║
+ ║  coded by John Tsorotes                                                      ║ 
+ ╚══════════════════════════════════════════════════════════════════════════════╝
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>🎤 PitchPilot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+		.welcome-btn.demo-btn {
+    background: linear-gradient(135deg, #2196F3, #42A5F5); /* Blue gradient */
+    box-shadow: 0 4px 12px rgba(33,150,243,0.5);
+    width: auto; /* only as wide as text */
+    padding: 12px 24px; /* comfortable padding */
+    display: inline-block; /* avoids full width */
+    margin-top: 24px; /* space above the button */
+    margin-bottom: 12px; /* space below the button */
+}
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0a0a;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── WELCOME MODAL ────────────────────────────────────────────────────── */
+        #welcome-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+             margin: 0; /* remove default top/bottom margins */
+    padding: 0;
+        }
+
+        #welcome-modal.hidden {
+            display: none;
+        }
+
+        .welcome-content {
+            background: #111;
+            border: 2px solid #E91E63;
+            border-radius: 16px;
+            padding: 30px 24px;
+            text-align: center;
+            max-width: 90vw;
+            width: 100%;
+        }
+
+        .welcome-title {
+            font-size: clamp(24px, 8vw, 48px);
+            font-weight: bold;
+            color: #E91E63;
+            margin-bottom: 16px;
+            letter-spacing: 2px;
+        }
+
+        .welcome-text {
+            font-size: clamp(14px, 4vw, 18px);
+            color: #ccc;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+
+        .welcome-input {
+            width: 100%;
+            padding: 14px;
+            font-size: clamp(13px, 3vw, 16px);
+            border: 2px solid #333;
+            border-radius: 8px;
+            background: #0f0f0f;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        .welcome-btn {
+            width: 100%;
+            padding: clamp(12px, 3vw, 16px);
+            font-size: clamp(14px, 3vw, 18px);
+            background: #E91E63;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 1px;
+        }
+
+        .welcome-btn:active {
+            transform: scale(0.96);
+        }
+
+        .welcome-btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        #welcome-error {
+            color: #ff6b6b;
+            margin-top: 16px;
+            font-size: clamp(12px, 3vw, 14px);
+            line-height: 1.4;
+            min-height: 40px;
+            word-wrap: break-word;
+        }
+
+        #progress-bar {
+            width: 100%;
+            height: 4px;
+            background: #222;
+            border-radius: 2px;
+            margin-top: 16px;
+            overflow: hidden;
+        }
+
+        #progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #E91E63, #FF1744);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        /* ── MAIN CONTAINER ────────────────────────────────────────────────────── */
+        #app-container {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+            padding: 8px;
+            gap: 8px;
+            overflow: hidden;
+        }
+
+        /* PORTRAIT MODE */
+        @media (orientation: portrait) {
+            #mini-canvas-wrap {
+                flex: 0 0 12%;
+            }
+
+            #lyrics-section {
+                flex: 1;
+            }
+
+            #controls-section {
+                flex: 0 0 20%;
+            }
+        }
+
+        /* LANDSCAPE MODE — OPTIMIZE FOR SINGING */
+        @media (orientation: landscape) {
+            #app-container {
+                flex-direction: column;
+            }
+
+            #mini-canvas-wrap {
+                flex: 0 0 15%;
+            }
+
+            #lyrics-section {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            #controls-section {
+                flex: 0 0 20%;
+                display: grid;
+                grid-template-columns: repeat(5, 1fr);
+                gap: 6px;
+                padding: 6px;
+            }
+
+            #controls-section button {
+                padding: 8px 2px !important;
+                font-size: 10px !important;
+                min-height: 50px;
+            }
+        }
+
+        /* ── PITCH CANVAS ────────────────────────────────────────────────────── */
+        #mini-canvas-wrap {
+            border: 1px solid #1a1a1a;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #080808;
+            position: relative;
+        }
+
+        #mini-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ── LYRICS SECTION ──────────────────────────────────────────────────── */
+        #lyrics-section {
+            background: #000;
+            border-radius: 10px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            text-align: center;
+        }
+
+        #key-legend {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            font-size: 11px;
+            font-weight: bold;
+            line-height: 1.6;
+            text-align: right;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px;
+            border-radius: 6px;
+        }
+
+        .k-high {
+            color: #c8e600;
+        }
+
+        .k-low {
+            color: #f44336;
+        }
+
+        .k-correct {
+            color: #4CAF50;
+        }
+
+        #big-word {
+            font-size: clamp(32px, 15vw, 72px);
+            font-weight: bold;
+            margin: 16px 0;
+            transition: all 0.1s ease;
+            letter-spacing: 2px;
+        }
+
+        #big-word.correct {
+            color: #4CAF50;
+            transform: scale(1.1);
+        }
+
+        #big-word.too-high {
+            color: #c8e600;
+            transform: translateY(-4px);
+        }
+
+        #big-word.too-low {
+            color: #f44336;
+            transform: translateY(4px);
+        }
+
+        #note-display {
+            font-size: clamp(16px, 8vw, 32px);
+            font-weight: bold;
+            letter-spacing: 4px;
+            color: #666;
+            transition: color 0.08s ease;
+        }
+
+        #note-display.correct {
+            color: #4CAF50;
+        }
+
+        #note-display.too-high {
+            color: #c8e600;
+        }
+
+        #note-display.too-low {
+            color: #f44336;
+        }
+
+        /* ── CONTROLS SECTION ────────────────────────────────────────────────── */
+        #controls-section {
+            background: #0a0a0a;
+            border-radius: 8px;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        #button-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 4px;
+            width: 100%;
+        }
+
+        #button-row button {
+            padding: 12px 8px !important;
+            font-size: 16px !important;
+            min-height: auto;
+        }
+
+        button {
+            background: #E91E63;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 12px 16px;
+            font-size: 18px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        button:active {
+            transform: scale(0.96);
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        #progress-container {
+            margin-top: 16px;
+        }
+
+        #status-msg {
+            font-size: 13px;
+            color: #888;
+            margin-top: 8px;
+        }
+
+        #progress-fill {
+            background: linear-gradient(90deg, #E91E63, #FF1744);
+        }
+
+        /* ── VIDEO TITLE & SHARE ────────────────────────────────────────────── */
+        #video-info-bar {
+            background: linear-gradient(90deg, #1a1a1a, #0f0f0f);
+            border-bottom: 1px solid #333;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            min-height: 50px;
+        }
+
+        #video-title {
+            flex: 1;
+            font-size: clamp(12px, 2.5vw, 16px);
+            color: #E91E63;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            letter-spacing: 1px;
+        }
+
+        #share-btn {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            padding: 10px 16px;
+            font-size: 14px;
+            flex-shrink: 0;
+            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        #share-btn:active {
+            transform: scale(0.95);
+            box-shadow: 0 1px 4px rgba(76, 175, 80, 0.2);
+        }
+
+        #share-notification {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 2000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        #share-notification.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// URL PARAMETER HANDLER - Parse and auto-load YouTube video if provided
+// ─────────────────────────────────────────────────────────────────────────────
+window.handleUrlParams = function() {
+    const params = new URLSearchParams(window.location.search);
+    const videoParam = params.get('video');
+    
+    if (videoParam) {
+        console.log('🎬 Found video parameter:', videoParam.substring(0, 50) + '...');
+        const urlInput = document.getElementById('welcome-url');
+        
+        // Decode the parameter (in case it's URL-encoded)
+        const decodedUrl = decodeURIComponent(videoParam);
+        urlInput.value = decodedUrl;
+        
+        console.log('✅ Pre-filled URL input with:', decodedUrl.substring(0, 50) + '...');
+        
+        // Optional: Auto-start after a short delay to let DOM render
+        // Uncomment the line below if you want auto-start
+        setTimeout(() => {
+            const startBtn = document.querySelector(".welcome-btn[onclick='startPitchPilot()']");
+            if (startBtn) {
+                console.log('🚀 Auto-starting PitchPilot...');
+                startBtn.click();
+            }
+        }, 500);
+    }
+};
+
+// Call when DOM is ready
+document.addEventListener('DOMContentLoaded', window.handleUrlParams);
+
+// Also call it immediately in case DOM is already loaded
+window.handleUrlParams();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEMO BUTTON - Hardcoded demo song
+// ─────────────────────────────────────────────────────────────────────────────
+window.loadDemoSong = function() {
+    const demoUrl = "https://www.youtube.com/watch?v=XHaVmFKnK7w";
+    const urlInput = document.getElementById("welcome-url");
+    urlInput.value = demoUrl;
+    const startButton = document.querySelector(".welcome-btn[onclick='startPitchPilot()']");
+    if (startButton) startButton.click();
+    else console.warn("START button not found!");
+}
+</script>
+	
+<!-- WELCOME MODAL -->
+<div id="welcome-modal">
+    <div class="welcome-content">
+        <div class="welcome-title">🎤 PitchPilot</div>
+			
+
+        <div id="welcome-step-1">
+            <div class="welcome-text"><br>
+                🎵 Test your pitch instantly!<br>
+                Just drop a YouTube link and press <strong>START</strong>.
+            </div>
+
+            <input
+                type="text"
+                id="welcome-url"
+                class="welcome-input"
+                placeholder="PASTE LINK FROM YOUTUBE TO THE SONG YOU WISH TO COVER."
+            />
+
+           <button class="welcome-btn" onclick="startPitchPilot()">START</button>
+<button class="welcome-btn demo-btn" onclick="loadDemoSong()">🎵 VIEW DEMO 🎵</button>
+
+            <div id="welcome-error"></div>
+        </div>
+
+        <div id="welcome-step-2" style="display: none;">
+            <div id="status-msg">⏳ Preparing...</div>
+            <div id="progress-bar">
+                <div id="progress-fill"></div>
+            </div>
+            <div style="font-size: 12px; color: #888; margin-top: 12px; line-height: 1.6;">
+                <div id="detailed-status">Initializing...</div>
+            </div>
+        </div>
+    </div>
+</div>
+	
+	<!-- MAIN APP -->
+
+<script type="module">
+	
+    // ─────────────────────────────────────────────────────────────────────────────
+    // CONFIGURATION - UPDATE THESE WITH YOUR ACTUAL VALUES
+    // ─────────────────────────────────────────────────────────────────────────────
+    const WORKER_URL = 'https://lingering-mouse-8c7c.tsorotes-john.workers.dev/youtube';
+    const RAPIDAPI_KEY = '38fe2f4d6dmshb20807c839504ffp112b93jsn4a00c20abfb3';
+    const ASSEMBLYAI_KEY = '9b1ed985cab647eabfbba182fc0cdfb3';
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // GLOBAL STATE
+    // ─────────────────────────────────────────────────────────────────────────────
+    let audioContext, audioBuffer, pills = [], isPlaying = false, isLooping = false;
+    let playbackStart = 0, rafId = null, canvas = null, ctx = null;
+    let micStream, micProcessor, micSource, currentMicPitch = -1, currentExpected = null;
+    let pitchDebugCounter = 0;
+    let currentVideoId = null;
+    let currentVideoTitle = 'Loading...';
+
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ENTRY POINT
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.startPitchPilot = async function() {
+        const url = document.getElementById('welcome-url').value.trim();
+        if (!url) {
+            showError('Please enter a YouTube URL');
+            return;
+        }
+
+        const videoId = extractVideoId(url);
+        if (!videoId) {
+            showError('Invalid YouTube URL. Use: youtube.com/watch?v=... or youtu.be/...');
+            return;
+        }
+
+        currentVideoId = videoId;
+        document.getElementById('welcome-step-1').style.display = 'none';
+        document.getElementById('welcome-step-2').style.display = 'block';
+
+        await downloadAndAnalyse(videoId);
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // FETCH VIDEO TITLE FROM YOUTUBE (via noembed API - no key needed)
+    // ─────────────────────────────────────────────────────────────────────────────
+    async function fetchVideoTitle(videoId) {
+        try {
+            // Using noembed.com API - free, no authentication needed
+            const response = await fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}`);
+            
+            if (!response.ok) {
+                console.warn('⚠️ Failed to fetch video title:', response.status);
+                return 'Unknown Song';
+            }
+
+            const data = await response.json();
+            const title = data.title || 'Unknown Song';
+            console.log('✅ Video title fetched:', title);
+            return title;
+        } catch (err) {
+            console.warn('⚠️ Could not fetch video title:', err.message);
+            return 'Unknown Song';
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // SHARE BUTTON - Copy shareable URL to clipboard
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.shareCurrentSession = async function() {
+        if (!currentVideoId) {
+            console.warn('No video loaded');
+            return;
+        }
+
+        // Build the share URL with the current video ID
+        const baseUrl = window.location.origin + window.location.pathname;
+        const fullUrl = `${baseUrl}?video=${currentVideoId}`;
+
+        try {
+            // Try using modern Clipboard API first
+            await navigator.clipboard.writeText(fullUrl);
+            showShareNotification('✅ Link copied to clipboard!');
+            console.log('📋 Share URL copied:', fullUrl);
+        } catch (err) {
+            // Fallback for older browsers
+            console.warn('Clipboard API failed, trying fallback:', err);
+            const textArea = document.createElement('textarea');
+            textArea.value = fullUrl;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.select();
+            
+            try {
+                document.execCommand('copy');
+                showShareNotification('✅ Link copied to clipboard!');
+                console.log('📋 Share URL copied (fallback):', fullUrl);
+            } catch (e) {
+                showShareNotification('❌ Could not copy link');
+                console.error('Copy failed:', e);
+            }
+            
+            document.body.removeChild(textArea);
+        }
+    };
+
+    // Show a notification toast for share action
+    function showShareNotification(message) {
+        let notification = document.getElementById('share-notification');
+        
+        if (!notification) {
+            notification = document.createElement('div');
+            notification.id = 'share-notification';
+            document.body.appendChild(notification);
+        }
+
+        notification.textContent = message;
+        notification.classList.add('show');
+
+        setTimeout(() => {
+            notification.classList.remove('show');
+        }, 2500);
+    }
+
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // DOWNLOAD & ANALYZE
+    // ─────────────────────────────────────────────────────────────────────────────
+    async function downloadAndAnalyse(videoId) {
+        try {
+            updateLoading('⏳ Getting video info...', 5, 'Fetching title...');
+
+            // Fetch the video title in parallel
+            currentVideoTitle = await fetchVideoTitle(videoId);
+            console.log('🎬 Video title set to:', currentVideoTitle);
+
+            updateLoading('⏳ Getting download link...', 10, 'Contacting API...');
+
+            // Call Worker - returns JSON with downloadUrl
+            const workerRes = await fetch(WORKER_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ videoId, apiKey: RAPIDAPI_KEY })
+            });
+
+            if (!workerRes.ok) {
+                const err = await workerRes.json().catch(() => ({ error: 'Download failed' }));
+                throw new Error(err.error || `Download error (${workerRes.status})`);
+            }
+
+            const data = await workerRes.json();
+            console.log('Worker response:', data);
+            
+            if (!data.downloadUrl) {
+                throw new Error('No download URL in response');
+            }
+
+            updateLoading('⏳ Downloading audio...', 30, 'Fetching from CDN...');
+
+            // Download audio directly from CDN URL
+            const audioRes = await fetch(data.downloadUrl, {
+                mode: 'cors',
+                credentials: 'omit'
+            });
+            if (!audioRes.ok) {
+                throw new Error(`Failed to download audio: ${audioRes.status}`);
+            }
+
+            const audioBlob = await audioRes.blob();
+            if (audioBlob.size < 1000) {
+                throw new Error('Audio file is corrupted or too small');
+            }
+
+            console.log('Audio downloaded:', audioBlob.size, 'bytes');
+
+            updateLoading('⏳ Loading audio...', 50, 'Decoding MP3...');
+
+            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            audioBuffer = await audioContext.decodeAudioData(await audioBlob.arrayBuffer());
+
+            updateLoading('⏳ Extracting lyrics...', 70, 'Transcribing with AssemblyAI...');
+
+            // Transcribe with AssemblyAI
+            const wordObjects = await transcribeAudio(audioBlob);
+            pills = generatePillsFromWordObjects(wordObjects);
+
+            updateLoading('✅ Ready to sing!', 100, 'All systems go!');
+
+            setTimeout(() => {
+                document.getElementById('welcome-modal').classList.add('hidden');
+                document.getElementById('app-container').style.display = 'flex';
+                initAudio();
+                initCanvas();
+                document.getElementById('big-word').textContent = '♪';
+                document.getElementById('status-msg').textContent = 'Ready to play';
+                
+                // Display the video title in the info bar
+                document.getElementById('video-title').textContent = currentVideoTitle;
+                
+                // Request fullscreen
+                requestFullscreen();
+            }, 1500);
+
+        } catch (err) {
+            showError(err.message);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // UPDATE LOADING UI
+    // ─────────────────────────────────────────────────────────────────────────────
+    function updateLoading(msg, progress, detail = '') {
+        document.getElementById('status-msg').textContent = msg;
+        document.getElementById('progress-fill').style.width = progress + '%';
+        if (detail) {
+            document.getElementById('detailed-status').textContent = detail;
+        }
+    }
+
+    function showError(msg) {
+        console.error('❌ Error:', msg);
+        updateLoading('❌ ' + msg, 0, '');
+        
+        setTimeout(() => {
+            document.getElementById('welcome-step-2').style.display = 'none';
+            document.getElementById('welcome-step-1').style.display = 'block';
+            document.getElementById('welcome-error').textContent = '❌ ' + msg;
+        }, 2000);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // TRANSCRIBE WITH ASSEMBLYAI
+    // ─────────────────────────────────────────────────────────────────────────────
+    async function transcribeAudio(audioBlob) {
+        try {
+            console.log('🎙️ Uploading to AssemblyAI...', 'blob size:', audioBlob.size, 'type:', audioBlob.type);
+            
+            // Upload
+            const uploadRes = await fetch('https://api.assemblyai.com/v2/upload', {
+                method: 'POST',
+                headers: { 
+                    'Authorization': ASSEMBLYAI_KEY,
+                    'Content-Type': 'audio/mpeg'
+                },
+                body: audioBlob
+            });
+
+            console.log('Upload response status:', uploadRes.status);
+
+            if (!uploadRes.ok) {
+                const errText = await uploadRes.text();
+                console.error('Upload error response:', errText);
+                throw new Error(`Upload failed: ${uploadRes.status} - ${errText.slice(0, 100)}`);
+            }
+
+            const uploadData = await uploadRes.json();
+            console.log('✅ Upload response:', uploadData);
+            
+            const audioUrl = uploadData.upload_url;
+            if (!audioUrl) {
+                throw new Error('No upload_url in response: ' + JSON.stringify(uploadData).slice(0, 200));
+            }
+
+            console.log('✅ Audio uploaded to:', audioUrl.slice(0, 80));
+            updateLoading('⏳ Extracting lyrics...', 60, 'Submitting for transcription...');
+
+            // Request transcription
+            const transcriptRes = await fetch('https://api.assemblyai.com/v2/transcript', {
+                method: 'POST',
+                headers: {
+                    'Authorization': ASSEMBLYAI_KEY,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    audio_url: audioUrl,
+                    language_code: 'en',
+                    speech_models: ['universal-2']
+                })
+            });
+
+            console.log('Transcript request status:', transcriptRes.status);
+
+            if (!transcriptRes.ok) {
+                const errText = await transcriptRes.text();
+                console.error('❌ Transcript error response:', errText);
+                throw new Error(`Transcription request failed: ${transcriptRes.status} - ${errText}`);
+            }
+
+            const transcriptData = await transcriptRes.json();
+            console.log('✅ Transcript response:', transcriptData);
+            
+            const transcriptId = transcriptData.id;
+            if (!transcriptId) {
+                throw new Error('No transcript ID in response: ' + JSON.stringify(transcriptData).slice(0, 200));
+            }
+
+            console.log('✅ Transcription job started:', transcriptId);
+            updateLoading('⏳ Extracting lyrics...', 70, 'Processing transcription...');
+
+            // Poll for completion
+            let transcript;
+            for (let i = 0; i < 600; i++) {
+                await new Promise(r => setTimeout(r, 1000));
+
+                const statusRes = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
+                    headers: { 'Authorization': ASSEMBLYAI_KEY }
+                });
+
+                if (!statusRes.ok) {
+                    throw new Error(`Status check failed: ${statusRes.status}`);
+                }
+
+                transcript = await statusRes.json();
+                console.log(`Poll ${i+1}: status=${transcript.status}`);
+
+                if (transcript.status === 'completed') {
+                    console.log('✅ Transcription complete');
+                    return transcript.words || [];
+                }
+
+                if (transcript.status === 'error') {
+                    throw new Error('Transcription failed: ' + (transcript.error || 'Unknown error'));
+                }
+
+                if (i % 10 === 0) {
+                    updateLoading('⏳ Extracting lyrics...', 70 + (i % 10), 'Still processing...');
+                }
+            }
+
+            throw new Error('Transcription timeout');
+
+        } catch (err) {
+            console.error('❌ Transcription error:', err);
+            throw new Error('Could not extract lyrics: ' + err.message);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // GENERATE PILLS FROM TRANSCRIPTION
+    // ─────────────────────────────────────────────────────────────────────────────
+    function generatePillsFromWordObjects(wordObjects) {
+        if (!wordObjects || wordObjects.length === 0) return [];
+
+        return wordObjects.map(w => ({
+            word: w.text || w.word || '?',
+            note: assignNoteToWord(w.text),
+            timeMs: w.start || 0,  // AssemblyAI returns milliseconds already
+            durMs: (w.end || 0) - (w.start || 0) || 100
+        }));
+    }
+
+    function assignNoteToWord(word) {
+        const notes = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4'];
+        const hash = word.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+        return notes[hash % notes.length];
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // EXTRACT VIDEO ID FROM URL
+    // ─────────────────────────────────────────────────────────────────────────────
+    function extractVideoId(url) {
+        const patterns = [
+            /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+            /^([a-zA-Z0-9_-]{11})$/
+        ];
+
+        for (const pattern of patterns) {
+            const match = url.match(pattern);
+            if (match) return match[1];
+        }
+        return null;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // PLAYBACK CONTROLS
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.play = function() {
+        if (!audioBuffer) {
+            console.warn('No audio buffer loaded');
+            return;
+        }
+        if (isPlaying) {
+            console.log('Already playing');
+            return;
+        }
+
+        console.log('▶️ Playing...');
+
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioContext.state === 'suspended') {
+            audioContext.resume().then(() => startPlayback());
+        } else {
+            startPlayback();
+        }
+    };
+
+    function startPlayback() {
+        // Stop any previous source
+        if (window.currentSource) {
+            try { window.currentSource.stop(); } catch (e) {}
+        }
+
+        // Request microphone permission when play starts
+        requestMicPermission();
+
+        // Create fresh source
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+
+        // Start from beginning
+        source.start(0);
+
+        window.currentSource = source;
+        isPlaying = true;
+        playbackStart = audioContext.currentTime;
+        document.getElementById('play-btn').disabled = true;
+        document.getElementById('pause-btn').disabled = false;
+
+        console.log('✅ Playback started');
+        loop();
+    }
+
+    // Pause playback
+    window.pause = function() {
+        if (!isPlaying) return;
+        
+        isPlaying = false;
+        
+        if (window.currentSource) {
+            try { window.currentSource.stop(); } catch (e) {}
+        }
+        
+        if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+        }
+        
+        document.getElementById('play-btn').disabled = false;
+        document.getElementById('pause-btn').disabled = true;
+        document.getElementById('status-msg').textContent = 'Paused';
+        
+        console.log('⏸ Playback paused');
+    };
+
+    // Stop playback
+    window.stop = function() {
+        if (!isPlaying) return;
+        
+        isPlaying = false;
+        
+        if (window.currentSource) {
+            try { window.currentSource.stop(); } catch (e) {}
+        }
+        
+        if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+        }
+        
+        // Reset UI
+        document.getElementById('play-btn').disabled = false;
+        document.getElementById('pause-btn').disabled = true;
+        document.getElementById('big-word').textContent = '♪';
+        document.getElementById('note-display').textContent = '—';
+        document.getElementById('status-msg').textContent = 'Stopped';
+        document.getElementById('progress-fill').style.width = '0%';
+        
+        console.log('⏹ Playback stopped');
+    };
+    
+    // Request mic permission (called on PLAY) - just gets permission, doesn't connect
+    async function requestMicPermission() {
+        try {
+            if (micStream) {
+                console.log('✅ Microphone stream already available');
+                return;
+            }
+            
+            console.log('🎤 Pre-requesting microphone permission on play...');
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            micStream = stream;
+            console.log('✅ Microphone permission granted and stream ready');
+            document.getElementById('mic-btn').disabled = false;
+            document.getElementById('mic-btn').textContent = '🎤 MIC OFF';
+            document.getElementById('status-msg').textContent = 'Mic permission granted - tap Mic button to start pitch detection';
+        } catch (err) {
+            console.log('ℹ️ Mic permission not yet needed (optional):', err.message);
+            document.getElementById('mic-btn').disabled = true;
+        }
+    }
+
+    // Toggle mic on/off
+    window.toggleMic = async function() {
+        // Check if mic is already on
+        if (micProcessor) {
+            // Turn OFF
+            console.log('🎤 Turning mic OFF');
+            if (micSource) {
+                try { micSource.disconnect(); } catch (e) {}
+                micSource = null;
+            }
+            micStream.getTracks().forEach(t => t.stop());
+            micStream = null;
+            micProcessor = null;
+            document.getElementById('mic-btn').style.background = '#00BCD4';
+            document.getElementById('mic-btn').textContent = '🎤 MIC OFF';
+            document.getElementById('status-msg').textContent = 'Mic off';
+            console.log('🔇 Mic fully disconnected');
+            return;
+        }
+
+        // Get microphone stream if we don't have one
+        if (!micStream) {
+            try {
+                console.log('🎤 Requesting microphone permission...');
+                micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                console.log('✅ Microphone permission granted');
+            } catch (err) {
+                console.error('❌ Mic permission error:', err);
+                alert('Microphone access denied: ' + err.message);
+                return;
+            }
+        }
+
+        // Turn ON
+        try {
+            console.log('🎤 Turning mic ON');
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            console.log('📊 AudioContext state:', audioContext.state, '| SampleRate:', audioContext.sampleRate);
+            
+            if (audioContext.state === 'suspended') {
+                console.log('⏸ Resuming suspended AudioContext...');
+                await audioContext.resume();
+            }
+
+            console.log('🔧 Creating AnalyserNode...');
+            micProcessor = audioContext.createAnalyser();
+            micProcessor.fftSize = 4096;
+            console.log('✓ AnalyserNode created | FFT size:', micProcessor.fftSize);
+            
+            // Try to connect the stream (only do this if not already connected)
+            console.log('🔌 Attempting to connect MediaStream to analyser...');
+            try {
+               console.log('🔌 Creating MediaStreamAudioSource (Android-safe)...');
+
+				// Use the existing audioContext
+				if (!audioContext.createMediaStreamSource) {
+					alert('AudioContext does not support createMediaStreamSource!');
+					return;
+				}
+
+				// Create the source
+				micSource = audioContext.createMediaStreamSource(micStream);
+
+				// Connect to analyser
+				micSource.connect(micProcessor);
+				console.log('✓ Mic connected!');
+            } catch (e) {
+                console.error('Failed:', e.message);
+                alert('Mic not supported on this browser');
+                return;
+            }
+
+            document.getElementById('mic-btn').style.background = '#4CAF50';
+            document.getElementById('mic-btn').textContent = '🎤 MIC ON';
+            document.getElementById('status-msg').textContent = 'Mic active - adjusting your pitch...';
+            console.log('✅ Mic ready for pitch detection');
+            detectPitch();
+
+        } catch (err) {
+            console.error('❌ Mic turn-on error:', err);
+            alert('Error enabling microphone: ' + err.message);
+        }
+    };
+
+    // Toggle fullscreen
+    window.toggleFullscreen = async function() {
+        try {
+            if (document.fullscreenElement) {
+                await document.exitFullscreen();
+            } else {
+                await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+            }
+        } catch (err) {
+            console.warn('Fullscreen not available:', err.message);
+        }
+    };
+
+    // Request fullscreen on app start
+    function requestFullscreen() {
+        if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen({ navigationUI: 'hide' })
+                .catch(err => console.log('Fullscreen request failed:', err.message));
+        }
+    }
+
+    // Toggle loop
+    window.toggleLoop = function() {
+        isLooping = !isLooping;
+        const btn = document.getElementById('loop-btn');
+        btn.style.background = isLooping ? '#4CAF50' : '#E91E63';
+        console.log('🔁 Loop:', isLooping ? 'ON' : 'OFF');
+    };
+
+    // Detect pitch using autocorrelation
+    function detectPitch() {
+        if (!micProcessor) return;
+
+        const data = new Uint8Array(micProcessor.frequencyBinCount);
+        micProcessor.getByteFrequencyData(data);
+
+        // Get time-domain data for autocorrelation
+        const timeDomainData = new Float32Array(micProcessor.fftSize);
+        micProcessor.getFloatTimeDomainData(timeDomainData);
+
+        pitchDebugCounter++;
+
+        const pitch = autoCorrelate(timeDomainData, audioContext.sampleRate);
+        let rms = 0;
+        for (let i = 0; i < timeDomainData.length; i++) {
+            rms += timeDomainData[i] * timeDomainData[i];
+        }
+        rms = Math.sqrt(rms / timeDomainData.length);
+
+        currentMicPitch = pitch;
+
+        if (currentExpected && pitch > 0) {
+            const expectedMidi = noteToMidi(currentExpected);
+            const pitchMidi = freqToMidi(pitch);
+            const diff = pitchMidi - expectedMidi;
+
+            if (diff > -1 && diff < 1) {
+                document.getElementById('big-word').className = 'correct';
+                document.getElementById('note-display').className = 'correct';
+                document.getElementById('status-msg').textContent = '✓ Perfect! (' + pitch.toFixed(1) + ' Hz) RMS: ' + rms.toFixed(3);
+            } else if (diff > 1) {
+                document.getElementById('big-word').className = 'too-high';
+                document.getElementById('note-display').className = 'too-high';
+                document.getElementById('status-msg').textContent = '↑ Too high (' + pitch.toFixed(1) + ' Hz) RMS: ' + rms.toFixed(3);
+            } else {
+                document.getElementById('big-word').className = 'too-low';
+                document.getElementById('note-display').className = 'too-low';
+                document.getElementById('status-msg').textContent = '↓ Too low (' + pitch.toFixed(1) + ' Hz) RMS: ' + rms.toFixed(3);
+            }
+        } else {
+            document.getElementById('big-word').className = '';
+            document.getElementById('note-display').className = '';
+            if (pitch > 0) {
+                document.getElementById('status-msg').textContent = 'Listening... (' + pitch.toFixed(1) + ' Hz) RMS: ' + rms.toFixed(3);
+            } else {
+                document.getElementById('status-msg').textContent = 'Mic ready (RMS: ' + rms.toFixed(3) + ')';
+            }
+        }
+
+        requestAnimationFrame(detectPitch);
+    }
+
+    function noteToMidi(noteName) {
+        const noteMap = { 'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11 };
+        const note = noteName.slice(0, -1);
+        const octave = parseInt(noteName.slice(-1));
+        return (octave + 1) * 12 + (noteMap[note] || 0);
+    }
+
+    function freqToMidi(freq) {
+        return Math.round(12 * Math.log2(freq / 8.1758) + 12);
+    }
+
+    function autoCorrelate(buffer, sampleRate) {
+        const SIZE = buffer.length;
+        const MAX_SAMPLES = Math.floor(SIZE / 2);
+        let best_offset = -1;
+        let best_correlation = 0;
+        let rms = 0;
+
+        for (let i = 0; i < SIZE; i++) {
+            const val = buffer[i];
+            rms += val * val;
+        }
+        rms = Math.sqrt(rms / SIZE);
+
+        // Debug: Log very quiet signals occasionally
+        if (pitchDebugCounter % 300 === 0 && rms < 0.01) {
+            console.warn('⚠️ Audio signal too quiet! RMS=' + rms.toFixed(6) + ' (need >= 0.01). Check mic volume!');
+        }
+
+        if (rms < 0.01) return -1;
+
+        let lastCorrelation = 1;
+        for (let offset = 0; offset < MAX_SAMPLES; offset++) {
+            let correlation = 0;
+            for (let i = 0; i < MAX_SAMPLES; i++) {
+                correlation += Math.abs(buffer[i] - buffer[i + offset]);
+            }
+            correlation = 1 - (correlation / MAX_SAMPLES);
+            if (correlation > 0.9) {
+                if (correlation > lastCorrelation) {
+                    let foundGoodCorrelation = false;
+                    if (correlation > best_correlation) {
+                        best_correlation = correlation;
+                        best_offset = offset;
+                        foundGoodCorrelation = true;
+                    }
+                    if (foundGoodCorrelation) {
+                        const shift = parabolicInterpolation(buffer, best_offset, MAX_SAMPLES);
+                        return sampleRate / (best_offset + shift);
+                    }
+                }
+            }
+            lastCorrelation = correlation;
+        }
+
+        if (best_correlation > 0.01) {
+            return sampleRate / best_offset;
+        }
+        return -1;
+    }
+
+    function parabolicInterpolation(buffer, x, size) {
+        const a = buffer[x];
+        const b = buffer[x + 1];
+        const c = buffer[x + 2];
+        
+        const a1 = -a / 2 + b - c / 2;
+        const a2 = a - b * 2 + c;
+        const a3 = -a / 2 + c / 2;
+
+        if (a2 === 0) return 0;
+        return a3 / (2 * a2);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ANIMATION LOOP
+    // ─────────────────────────────────────────────────────────────────────────────
+    function loop() {
+        if (!isPlaying) return;
+
+        const elapsed = (audioContext.currentTime - playbackStart) * 1000;
+        const songDuration = audioBuffer.duration * 1000;
+        const progress = Math.min(100, (elapsed / songDuration) * 100);
+        document.getElementById('progress-fill').style.width = progress + '%';
+
+        let currentWord = null;
+        for (let p of pills) {
+            if (elapsed >= p.timeMs && elapsed <= p.timeMs + p.durMs) {
+                currentWord = p;
+                break;
+            }
+        }
+
+        if (!currentWord) {
+            for (let p of pills) {
+                if (p.timeMs > elapsed && p.timeMs - elapsed < 0) {
+                    currentWord = p;
+                    break;
+                }
+            }
+        }
+
+        if (currentWord) {
+            currentExpected = currentWord.note;
+            document.getElementById('big-word').textContent = currentWord.word;
+            document.getElementById('note-display').textContent = currentWord.note;
+        } else {
+            document.getElementById('big-word').textContent = '♪';
+            document.getElementById('note-display').textContent = '—';
+        }
+
+        renderCanvas(elapsed);
+
+        if (elapsed > songDuration) {
+            if (isLooping) {
+                window.stop();
+                setTimeout(window.play, 300);
+            } else {
+                window.stop();
+            }
+            return;
+        }
+
+        rafId = requestAnimationFrame(loop);
+    }
+
+    function renderCanvas(elapsed) {
+        if (!canvas) return;
+
+        const W = canvas.width;
+        const H = canvas.height;
+        const hitX = W * 0.15;
+        const ppm = (W - hitX) / 5000;
+
+        ctx.fillStyle = '#080808';
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.strokeStyle = '#1a1a1a';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 3; i++) {
+            const y = (H / 3) * i;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(W, y);
+            ctx.stroke();
+        }
+
+        const colors = ['#f44336', '#FF9800', '#c8e600', '#4CAF50', '#00BCD4'];
+        
+        pills.forEach((p, idx) => {
+            const timeUntil = p.timeMs - elapsed;
+            const x = hitX + timeUntil * ppm;
+            const pw = Math.max(p.durMs * ppm - 2, 4);
+            const ph = H - 4;
+            const py = 2;
+
+            if (x > W + pw || x + pw < 0) return;
+
+            const colorIdx = idx % colors.length;
+            ctx.fillStyle = colors[colorIdx];
+            ctx.fillRect(Math.max(0, x), py, pw, ph);
+        });
+
+        ctx.strokeStyle = '#E91E63';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(hitX, 0);
+        ctx.lineTo(hitX, H);
+        ctx.stroke();
+    }
+
+    function initAudio() {
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        document.getElementById('play-btn').disabled = false;
+        document.getElementById('pause-btn').disabled = true;
+    }
+
+    function initCanvas() {
+        canvas = document.getElementById('mini-canvas');
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+        ctx = canvas.getContext('2d');
+    }
+</script>
+<div id="app-container">
+    <div id="video-info-bar">
+        <div id="video-title">♪ Song Title</div>
+        <button id="share-btn" onclick="window.shareCurrentSession()">📤 SHARE</button>
+    </div>
+
+    <div id="mini-canvas-wrap">
+        <canvas id="mini-canvas"></canvas>
+    </div>
+
+    <div id="lyrics-section">
+        <div id="key-legend">
+            <div><span class="k-correct">●</span> On pitch</div>
+            <div><span class="k-high">●</span> Too high</div>
+            <div><span class="k-low">●</span> Too low</div>
+        </div>
+        <div id="big-word">♪</div>
+        <div id="note-display">—</div>
+        <div id="status-msg">Ready to play</div>
+    </div>
+
+    <div id="controls-section">
+        <div id="button-row">
+            <button id="play-btn" onclick="window.play()">▶ Play</button>
+            <button id="pause-btn" onclick="window.pause()">⏸ Pause</button>
+            <button id="loop-btn" onclick="window.toggleLoop()">🔁 Loop</button>
+            <button id="mic-btn" onclick="toggleMic()">🎤 OFF</button>
+            <button id="fullscreen-btn" onclick="window.toggleFullscreen()">✕</button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
