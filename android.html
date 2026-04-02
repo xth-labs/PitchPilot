@@ -856,21 +856,14 @@
             // Try to connect the stream (only do this if not already connected)
             console.log('🔌 Attempting to connect MediaStream to analyser...');
             try {
-                if (!micSource) {
-                    micSource = audioContext.createMediaStreamAudioSource(micStream);
-                    console.log('✓ MediaStreamAudioSource created');
-                }
-                
-                micSource.connect(micProcessor);
-                console.log('✓✓ STREAM CONNECTED TO ANALYSER - Audio should now flow!');
-                console.log('📡 Mic stream active tracks:', micStream.getAudioTracks().length);
-                console.log('🎙️ Audio track enabled:', micStream.getAudioTracks()[0]?.enabled);
-                
+                console.log('🔌 Creating MediaStreamAudioSource...');
+                // CRITICAL: Use window.AudioContext not just audioContext
+                const source = new AudioContext().createMediaStreamAudioSource(micStream);
+                source.connect(micProcessor);
+                console.log('✓ Mic connected!');
             } catch (e) {
-                console.error('❌ Error connecting stream:', e);
-                console.error('This usually means browser incompatibility');
-                micProcessor = null;
-                alert('Your browser doesn\'t support real-time pitch detection. But you can still sing!');
+                console.error('Failed:', e.message);
+                alert('Mic not supported on this browser');
                 return;
             }
 
