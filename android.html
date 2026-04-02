@@ -572,9 +572,19 @@
                 body: audioBlob
             });
 
-            const uploadData = await uploadRes.json();
-            const audioUrl = uploadData.upload_url;
+            if (!uploadRes.ok) {
+                throw new Error(`Upload failed: ${uploadRes.status}`);
+            }
 
+            const uploadData = await uploadRes.json();
+            console.log('Upload response:', uploadData);
+            
+            const audioUrl = uploadData.upload_url;
+            if (!audioUrl) {
+                throw new Error('No upload_url in response: ' + JSON.stringify(uploadData).slice(0, 100));
+            }
+
+            console.log('✅ Audio uploaded:', audioUrl);
             updateLoading('⏳ Extracting lyrics...', 60, 'Submitting for transcription...');
 
             // Request transcription
@@ -591,9 +601,19 @@
                 })
             });
 
-            const transcriptData = await transcriptRes.json();
-            const transcriptId = transcriptData.id;
+            if (!transcriptRes.ok) {
+                throw new Error(`Transcription request failed: ${transcriptRes.status}`);
+            }
 
+            const transcriptData = await transcriptRes.json();
+            console.log('Transcript response:', transcriptData);
+            
+            const transcriptId = transcriptData.id;
+            if (!transcriptId) {
+                throw new Error('No transcript ID in response: ' + JSON.stringify(transcriptData).slice(0, 100));
+            }
+
+            console.log('✅ Transcription started:', transcriptId);
             updateLoading('⏳ Extracting lyrics...', 70, 'Processing transcription...');
 
             // Poll for completion
@@ -605,7 +625,12 @@
                     headers: { 'Authorization': ASSEMBLYAI_KEY }
                 });
 
+                if (!statusRes.ok) {
+                    throw new Error(`Status check failed: ${statusRes.status}`);
+                }
+
                 transcript = await statusRes.json();
+                console.log(`Poll ${i+1}: status=${transcript.status}`);
 
                 if (transcript.status === 'completed') {
                     console.log('✅ Transcription complete');
