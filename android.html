@@ -856,19 +856,27 @@
             // Try to connect the stream (only do this if not already connected)
             console.log('🔌 Attempting to connect MediaStream to analyser...');
             try {
-                console.log('🔌 Creating MediaStreamAudioSource...');
-                // CRITICAL: Use window.AudioContext not just audioContext
-              const source = audioContext.createMediaStreamAudioSource(micStream);
-			micSource = source; // <-- store it so you can disconnect later
-			source.connect(micProcessor);
-                console.log('✓ Mic connected!');
+               console.log('🔌 Creating MediaStreamAudioSource (Android-safe)...');
+
+			// Use the existing audioContext
+			if (!audioContext.createMediaStreamSource) {
+				alert('AudioContext does not support createMediaStreamSource!');
+				return;
+			}
+
+			// Create the source
+			micSource = audioContext.createMediaStreamSource(micStream);
+
+			// Connect to analyser
+			micSource.connect(micProcessor);
+			console.log('✓ Mic connected!');
             } catch (e) {
                 console.error('Failed:', e.message);
                 alert('Mic not supported on this browser');
                 return;
             }
 
-            document.getElementById('mic-btn').style.background = '#4CAF50';
+            document.getElementById('mic-btn').style.backg
             document.getElementById('mic-btn').textContent = '🎤 MIC ON';
             document.getElementById('status-msg').textContent = '🎤 Mic active - ready to detect pitch!';
             console.log('🟢 Microphone is READY for pitch detection');
