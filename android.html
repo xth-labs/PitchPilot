@@ -49,6 +49,11 @@
     display: inline-block; /* avoids full width */
     margin-bottom: 12px;
 }
+		.welcome-btn {
+    display: block;
+    margin-bottom: 12px; /* add space between buttons */
+    width: 100%; /* optional for full-width */
+}
 
         body {
             font-family: 'Courier New', monospace;
@@ -410,11 +415,8 @@ window.loadDemoSong = function() {
                 placeholder="PASTE LINK FROM YOUTUBE TO THE SONG YOU WISH TO COVER."
             />
 
-            <button class="welcome-btn" onclick="startPitchPilot()">START</button>
-
-        <br>  <br>  <button class="welcome-btn demo-btn" onclick="loadDemoSong()">
-                🎵 VIEW DEMO 🎵
-            </button><br> 	 
+           <button class="welcome-btn" onclick="startPitchPilot()">START</button>
+<button class="welcome-btn demo-btn" onclick="loadDemoSong()">🎵 VIEW DEMO 🎵</button>
 
             <div id="welcome-error"></div>
         </div>
