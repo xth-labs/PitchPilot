@@ -203,14 +203,14 @@
             #controls-section {
                 flex: 0 0 20%;
                 display: grid;
-                grid-template-columns: repeat(4, 1fr);
+                grid-template-columns: repeat(5, 1fr);
                 gap: 6px;
                 padding: 6px;
             }
 
             #controls-section button {
-                padding: 8px 4px !important;
-                font-size: 11px !important;
+                padding: 8px 2px !important;
+                font-size: 10px !important;
                 min-height: 50px;
             }
         }
@@ -323,7 +323,7 @@
 
         #button-row {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(5, 1fr);
             gap: 4px;
             width: 100%;
         }
@@ -733,7 +733,53 @@
         loop();
     }
 
-    // Request mic permission (called on PLAY)
+    // Pause playback
+    window.pause = function() {
+        if (!isPlaying) return;
+        
+        isPlaying = false;
+        
+        if (window.currentSource) {
+            try { window.currentSource.stop(); } catch (e) {}
+        }
+        
+        if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+        }
+        
+        document.getElementById('play-btn').disabled = false;
+        document.getElementById('pause-btn').disabled = true;
+        document.getElementById('status-msg').textContent = 'Paused';
+        
+        console.log('⏸ Playback paused');
+    };
+
+    // Stop playback
+    window.stop = function() {
+        if (!isPlaying) return;
+        
+        isPlaying = false;
+        
+        if (window.currentSource) {
+            try { window.currentSource.stop(); } catch (e) {}
+        }
+        
+        if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+        }
+        
+        // Reset UI
+        document.getElementById('play-btn').disabled = false;
+        document.getElementById('pause-btn').disabled = true;
+        document.getElementById('big-word').textContent = '♪';
+        document.getElementById('note-display').textContent = '—';
+        document.getElementById('status-msg').textContent = 'Stopped';
+        document.getElementById('progress-fill').style.width = '0%';
+        
+        console.log('⏹ Playback stopped');
+    };
     async function requestMicPermission() {
         try {
             if (micStream) return; // Already have it
@@ -822,12 +868,12 @@
     // ─────────────────────────────────────────────────────────────────────────────
     function requestFullscreen() {
         const elem = document.documentElement;
-        if (elem.requestFullscreen) {
-            elem.requestFullscreen().catch(() => {});
-        } else if (elem.webkitRequestFullscreen) {
-            elem.webkitRequestFullscreen();
-        } else if (elem.msRequestFullscreen) {
-            elem.msRequestFullscreen();
+        const fsRequest = elem.requestFullscreen?.() || elem.webkitRequestFullscreen?.() || elem.msRequestFullscreen?.();
+        if (fsRequest) {
+            fsRequest.catch(err => {
+                console.error('Fullscreen request failed:', err);
+                document.getElementById('status-msg').textContent = 'Fullscreen unavailable';
+            });
         }
         updateFullscreenButton();
     }
@@ -864,30 +910,47 @@
             return;
         }
 
+        // Use time-domain data for autocorrelation (not frequency data)
         const dataArray = new Uint8Array(micProcessor.frequencyBinCount);
-        micProcessor.getByteFrequencyData(dataArray);
+        micProcessor.getByteTimeDomainData(dataArray);
+        
+        // Convert from Uint8Array to Float32Array for autocorrelation
+        const floatArray = new Float32Array(dataArray.length);
+        for (let i = 0; i < dataArray.length; i++) {
+            floatArray[i] = (dataArray[i] - 128) / 128.0;
+        }
 
-        const pitch = autoCorrelate(dataArray, audioContext.sampleRate);
+        const pitch = autoCorrelate(floatArray, audioContext.sampleRate);
         currentMicPitch = pitch;
 
+        // Only update colors if we have a valid pitch detection
         if (currentExpected && pitch > 0) {
             const expectedMidi = noteToMidi(currentExpected);
             const sungMidi = freqToMidi(pitch);
             const diff = sungMidi - expectedMidi;
 
+            // Tighter tolerance for pitch matching
             if (Math.abs(diff) <= 1) {
                 document.getElementById('big-word').className = 'correct';
                 document.getElementById('note-display').className = 'correct';
+                document.getElementById('status-msg').textContent = '✓ On pitch! (' + pitch.toFixed(1) + ' Hz)';
             } else if (diff > 1) {
                 document.getElementById('big-word').className = 'too-high';
                 document.getElementById('note-display').className = 'too-high';
+                document.getElementById('status-msg').textContent = '↑ Too high (' + pitch.toFixed(1) + ' Hz)';
             } else {
                 document.getElementById('big-word').className = 'too-low';
                 document.getElementById('note-display').className = 'too-low';
+                document.getElementById('status-msg').textContent = '↓ Too low (' + pitch.toFixed(1) + ' Hz)';
             }
         } else {
             document.getElementById('big-word').className = '';
             document.getElementById('note-display').className = '';
+            if (pitch > 0) {
+                document.getElementById('status-msg').textContent = 'Listening... (' + pitch.toFixed(1) + ' Hz)';
+            } else {
+                document.getElementById('status-msg').textContent = 'Mic active - singing mode!';
+            }
         }
 
         requestAnimationFrame(detectPitch);
@@ -983,7 +1046,7 @@
 
         if (!currentWord) {
             for (let p of pills) {
-                if (p.timeMs > elapsed && p.timeMs - elapsed < 500) {
+                if (p.timeMs > elapsed && p.timeMs - elapsed < 0) {
                     currentWord = p;
                     break;
                 }
@@ -1099,7 +1162,5 @@
     </div>
 </div>
 
-
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"88ae93dc204b4258bbe6a74b2de0d960","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
