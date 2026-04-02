@@ -823,41 +823,51 @@
 
         // Turn ON
         try {
-            console.log('Turning mic ON');
+            console.log('🎤 Turning mic ON');
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
             
+            console.log('📊 AudioContext state:', audioContext.state, '| SampleRate:', audioContext.sampleRate);
+            
             if (audioContext.state === 'suspended') {
+                console.log('⏸ Resuming suspended AudioContext...');
                 await audioContext.resume();
             }
 
-            console.log('Creating analyzer...');
+            console.log('🔧 Creating AnalyserNode...');
             micProcessor = audioContext.createAnalyser();
             micProcessor.fftSize = 4096;
+            console.log('✓ AnalyserNode created | FFT size:', micProcessor.fftSize);
             
             // Try to connect the stream
-            console.log('Connecting stream to analyzer...');
+            console.log('🔌 Attempting to connect MediaStream to analyser...');
             try {
                 const micSource = audioContext.createMediaStreamAudioSource(micStream);
+                console.log('✓ MediaStreamAudioSource created');
+                
                 micSource.connect(micProcessor);
+                console.log('✓✓ STREAM CONNECTED TO ANALYSER - Audio should now flow!');
+                console.log('📡 Mic stream active tracks:', micStream.getAudioTracks().length);
+                console.log('🎙️ Audio track enabled:', micStream.getAudioTracks()[0]?.enabled);
+                
             } catch (e) {
-                console.warn('createMediaStreamAudioSource failed, trying alternative...');
-                // Fallback: just use the analyser without connecting source
-                // This is for browsers that don't support it
+                console.error('❌ createMediaStreamAudioSource failed:', e);
+                console.error('This usually means the mic stream is already connected or browser incompatibility');
                 micProcessor = null;
                 alert('Your browser doesn\'t support real-time pitch detection. But you can still sing!');
                 return;
             }
 
             document.getElementById('mic-btn').style.background = '#4CAF50';
-            document.getElementById('mic-btn').textContent = '🎤 MIC';
-            document.getElementById('status-msg').textContent = 'Mic active - singing mode!';
+            document.getElementById('mic-btn').textContent = '🎤 MIC ON';
+            document.getElementById('status-msg').textContent = '🎤 Mic active - ready to detect pitch!';
+            console.log('🟢 Microphone is READY for pitch detection');
 
             detectPitch();
 
         } catch (err) {
-            console.error('Mic error:', err);
+            console.error('❌ Mic error:', err);
             alert('Error: ' + err.message);
             micProcessor = null;
         }
@@ -904,6 +914,8 @@
     // ─────────────────────────────────────────────────────────────────────────────
     // PITCH DETECTION
     // ─────────────────────────────────────────────────────────────────────────────
+    let pitchDebugCounter = 0;
+    
     function detectPitch() {
         if (!micProcessor || !isPlaying) {
             requestAnimationFrame(detectPitch);
@@ -914,6 +926,14 @@
         const dataArray = new Uint8Array(micProcessor.frequencyBinCount);
         micProcessor.getByteTimeDomainData(dataArray);
         
+        // Check for audio signal
+        let rms = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+            const normalized = (dataArray[i] - 128) / 128.0;
+            rms += normalized * normalized;
+        }
+        rms = Math.sqrt(rms / dataArray.length);
+        
         // Convert from Uint8Array to Float32Array for autocorrelation
         const floatArray = new Float32Array(dataArray.length);
         for (let i = 0; i < dataArray.length; i++) {
@@ -922,6 +942,13 @@
 
         const pitch = autoCorrelate(floatArray, audioContext.sampleRate);
         currentMicPitch = pitch;
+
+        // Log every 30 frames (~500ms at 60fps) for debugging
+        pitchDebugCounter++;
+        if (pitchDebugCounter % 30 === 0) {
+            console.log('🎤 AUDIO SIGNAL: RMS=' + rms.toFixed(4) + ' | Pitch=' + (pitch > 0 ? pitch.toFixed(1) + ' Hz' : 'not detected'));
+            console.log('📊 Audio buffer min/max:', Math.min(...dataArray), '/', Math.max(...dataArray));
+        }
 
         // Only update colors if we have a valid pitch detection
         if (currentExpected && pitch > 0) {
@@ -933,23 +960,23 @@
             if (Math.abs(diff) <= 1) {
                 document.getElementById('big-word').className = 'correct';
                 document.getElementById('note-display').className = 'correct';
-                document.getElementById('status-msg').textContent = '✓ On pitch! (' + pitch.toFixed(1) + ' Hz)';
+                document.getElementById('status-msg').textContent = '✓ On pitch! (' + pitch.toFixed(1) + ' Hz) RMS: ' + rms.toFixed(3);
             } else if (diff > 1) {
                 document.getElementById('big-word').className = 'too-high';
                 document.getElementById('note-display').className = 'too-high';
-                document.getElementById('status-msg').textContent = '↑ Too high (' + pitch.toFixed(1) + ' Hz)';
+                document.getElementById('status-msg').textContent = '↑ Too high (' + pitch.toFixed(1) + ' Hz) RMS: ' + rms.toFixed(3);
             } else {
                 document.getElementById('big-word').className = 'too-low';
                 document.getElementById('note-display').className = 'too-low';
-                document.getElementById('status-msg').textContent = '↓ Too low (' + pitch.toFixed(1) + ' Hz)';
+                document.getElementById('status-msg').textContent = '↓ Too low (' + pitch.toFixed(1) + ' Hz) RMS: ' + rms.toFixed(3);
             }
         } else {
             document.getElementById('big-word').className = '';
             document.getElementById('note-display').className = '';
             if (pitch > 0) {
-                document.getElementById('status-msg').textContent = 'Listening... (' + pitch.toFixed(1) + ' Hz)';
+                document.getElementById('status-msg').textContent = 'Listening... (' + pitch.toFixed(1) + ' Hz) RMS: ' + rms.toFixed(3);
             } else {
-                document.getElementById('status-msg').textContent = 'Mic active - singing mode!';
+                document.getElementById('status-msg').textContent = 'Mic ready (RMS: ' + rms.toFixed(3) + ')';
             }
         }
 
@@ -979,6 +1006,11 @@
             rms += val * val;
         }
         rms = Math.sqrt(rms / SIZE);
+
+        // Debug: Log very quiet signals occasionally
+        if (pitchDebugCounter % 300 === 0 && rms < 0.01) {
+            console.warn('⚠️ Audio signal too quiet! RMS=' + rms.toFixed(6) + ' (need >= 0.01). Check mic volume!');
+        }
 
         if (rms < 0.01) return -1;
 
