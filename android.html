@@ -28,6 +28,7 @@
  ║  coded by John Tsorotes                                                      ║ 
  ╚══════════════════════════════════════════════════════════════════════════════╝
 -->
+
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -148,18 +149,18 @@
                 flex-direction: column;
             }
 
+            #mini-canvas-wrap {
+                flex: 0 0 15%;
+                min-height: 60px;
+            }
+
             #lyrics-section {
-                flex: 0 0 40%;
+                flex: 0 0 55%;
                 min-height: 200px;
             }
 
-            #canvas-wrap {
-                flex: 0 0 35%;
-                min-height: 150px;
-            }
-
             #controls-section {
-                flex: 0 0 25%;
+                flex: 0 0 30%;
                 overflow-y: auto;
             }
         }
@@ -170,21 +171,21 @@
                 flex-direction: column;
             }
 
+            #mini-canvas-wrap {
+                flex: 0 0 12%;
+                min-height: auto;
+            }
+
             #lyrics-section {
-                flex: 0 0 55%;
+                flex: 0 0 60%;
                 min-height: auto;
                 display: flex;
                 align-items: center;
                 justify-content: center;
             }
 
-            #canvas-wrap {
-                flex: 0 0 20%;
-                min-height: auto;
-            }
-
             #controls-section {
-                flex: 0 0 25%;
+                flex: 0 0 28%;
                 overflow-y: auto;
                 display: flex;
                 flex-wrap: wrap;
@@ -294,14 +295,14 @@
         }
 
         /* ── CANVAS (minimized in landscape) ──────────────────────────────────── */
-        #canvas-wrap {
+        #mini-canvas-wrap {
             border: 1px solid #1a1a1a;
             border-radius: 8px;
             overflow: hidden;
             background: #080808;
         }
 
-        #vocal-canvas {
+        #mini-canvas {
             display: block;
             width: 100%;
             height: 100%;
@@ -471,6 +472,11 @@
      ════════════════════════════════════════════════════════════════════════════ -->
 <div id="app-container" style="display:none;">
 
+    <!-- MINI CANVAS (NOTES TIMELINE) -->
+    <div id="mini-canvas-wrap" style="height:60px; border:1px solid #1a1a1a; border-radius:8px; overflow:hidden; background:#080808; margin-bottom:8px;">
+        <canvas id="mini-canvas"></canvas>
+    </div>
+
     <!-- LYRICS (BIG CENTRE) -->
     <div id="lyrics-section">
         <div id="key-legend">
@@ -480,11 +486,6 @@
         </div>
         <div id="big-word">Ready</div>
         <div id="note-name">—</div>
-    </div>
-
-    <!-- CANVAS (NOTES TIMELINE) -->
-    <div id="canvas-wrap">
-        <canvas id="vocal-canvas"></canvas>
     </div>
 
     <!-- CONTROLS (BUTTONS + STATS) -->
@@ -566,6 +567,14 @@
         document.getElementById('welcome-step-1').style.display = 'none';
         document.getElementById('welcome-step-2').style.display = 'block';
 
+        // Request fullscreen
+        const elem = document.documentElement;
+        if (elem.requestFullscreen) {
+            elem.requestFullscreen().catch(() => {});
+        } else if (elem.webkitRequestFullscreen) {
+            elem.webkitRequestFullscreen();
+        }
+
         // Download + analyse
         await downloadAndAnalyse(videoId);
     }
@@ -610,8 +619,8 @@
                 document.getElementById('app-container').style.display = 'flex';
                 initAudio();
                 initCanvas();
-                document.getElementById('big-word').textContent = 'GO!';
-                document.getElementById('big-word').className = 'correct';
+                document.getElementById('big-word').textContent = '🎤';
+                document.getElementById('big-word').className = '';
             }, 1500);
 
         } catch (err) {
@@ -685,7 +694,7 @@
     }
 
     function initCanvas() {
-        canvas = document.getElementById('vocal-canvas');
+        canvas = document.getElementById('mini-canvas');
         ctx = canvas.getContext('2d');
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
@@ -693,7 +702,7 @@
 
     function resizeCanvas() {
         canvas.width = canvas.offsetWidth || 600;
-        canvas.height = canvas.offsetHeight || 150;
+        canvas.height = canvas.offsetHeight || 60;
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -747,12 +756,16 @@
 
         if (nearestPill && Math.abs(nearestPill.timeMs - elapsed) < 2000) {
             currentExpected = nearestPill.note;
-            document.getElementById('exp-v').textContent = nearestPill.note;
+            // Show the NOTE in big text for what user should sing
             document.getElementById('big-word').textContent = nearestPill.note.slice(0, -1) || '♪';
+            document.getElementById('exp-v').textContent = nearestPill.note;
         } else {
             document.getElementById('big-word').textContent = '♪';
             document.getElementById('exp-v').textContent = '—';
         }
+
+        // Render mini canvas
+        renderMiniCanvas(elapsed);
 
         // Check end
         if (elapsed > songDuration) {
@@ -761,6 +774,43 @@
         }
 
         rafId = requestAnimationFrame(loop);
+    }
+
+    function renderMiniCanvas(elapsed) {
+        if (!canvas) return;
+
+        const W = canvas.width;
+        const H = canvas.height;
+        const hitX = W * 0.2;
+        const ppm = (W - hitX) / 5000;
+
+        ctx.clearRect(0, 0, W, H);
+
+        // Simple pills rendering
+        pills.forEach(p => {
+            const timeUntil = p.timeMs - elapsed;
+            const x = hitX + timeUntil * ppm;
+            const pw = Math.max(p.durMs * ppm - 2, 8);
+            const py = H * 0.2;
+            const ph = H * 0.6;
+
+            if (x > W + pw || x + pw < -10) return;
+
+            let color = '#E91E63';
+            if (p.state === 'hit') color = '#fff';
+            if (p.state === 'missed') color = '#1a1a1a';
+
+            ctx.fillStyle = color;
+            ctx.fillRect(x, py, pw, ph);
+        });
+
+        // Hit line
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(hitX, 0);
+        ctx.lineTo(hitX, H);
+        ctx.stroke();
     }
 
     // ══════════════════════════════════════════════════════════════════════════
