@@ -611,8 +611,8 @@
 
             if (!transcriptRes.ok) {
                 const errText = await transcriptRes.text();
-                console.error('Transcript error response:', errText);
-                throw new Error(`Transcription request failed: ${transcriptRes.status} - ${errText.slice(0, 100)}`);
+                console.error('❌ Transcript error response:', errText);
+                throw new Error(`Transcription request failed: ${transcriptRes.status} - ${errText}`);
             }
 
             const transcriptData = await transcriptRes.json();
