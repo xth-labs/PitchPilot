@@ -339,7 +339,7 @@
             border: none;
             border-radius: 6px;
             padding: 12px 16px;
-            font-size: 14px;
+            font-size: 18px;
             font-family: 'Courier New', monospace;
             font-weight: bold;
             cursor: pointer;
@@ -730,6 +730,9 @@
             try { window.currentSource.stop(); } catch (e) {}
         }
 
+        // Request microphone permission when play starts
+        requestMicPermission();
+
         // Create fresh source
         const source = audioContext.createBufferSource();
         source.buffer = audioBuffer;
@@ -748,44 +751,45 @@
         loop();
     }
 
-    window.pause = function() {
-        if (!isPlaying) return;
-        isPlaying = false;
-        if (window.currentSource) window.currentSource.stop();
-        if (rafId) cancelAnimationFrame(rafId);
-        document.getElementById('play-btn').disabled = false;
-        document.getElementById('pause-btn').disabled = true;
-    };
+    // Request mic permission (called on PLAY)
+    async function requestMicPermission() {
+        try {
+            if (micStream) return; // Already have it
+            
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // Got permission - store it but don't process yet
+            micStream = stream;
+            console.log('✅ Microphone permission granted');
+            document.getElementById('mic-btn').disabled = false;
+        } catch (err) {
+            console.log('Mic permission denied:', err.message);
+            document.getElementById('mic-btn').disabled = true;
+        }
+    }
 
-    window.stop = function() {
-        window.pause();
-        if (audioContext) audioContext.currentTime = 0;
-    };
-
-    window.toggleLoop = function() {
-        isLooping = !isLooping;
-        document.getElementById('loop-btn').style.opacity = isLooping ? '1' : '0.5';
-    };
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // MIC
-    // ─────────────────────────────────────────────────────────────────────────────
+    // Toggle mic on/off
     window.toggleMic = async function() {
-        if (micStream) {
+        if (!micStream) {
+            alert('Microphone not available. Press PLAY first to request permission.');
+            return;
+        }
+
+        if (micProcessor) {
+            // Turn OFF
             micStream.getTracks().forEach(t => t.stop());
             micStream = null;
             micProcessor = null;
-            document.getElementById('mic-btn').style.background = '#666';
-            document.getElementById('mic-btn').textContent = '🎤 OFF';
+            document.getElementById('mic-btn').style.background = '#00BCD4';
+            document.getElementById('mic-btn').textContent = '🎤 MIC OFF';
             document.getElementById('status-msg').textContent = 'Mic off';
             return;
         }
 
+        // Turn ON
         try {
             if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
             if (audioContext.state === 'suspended') audioContext.resume();
 
-            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const micSource = audioContext.createMediaStreamAudioSource(micStream);
             
             micProcessor = audioContext.createAnalyser();
@@ -793,13 +797,14 @@
             micSource.connect(micProcessor);
 
             document.getElementById('mic-btn').style.background = '#4CAF50';
-            document.getElementById('mic-btn').textContent = '🎤 ON';
+            document.getElementById('mic-btn').textContent = '🎤 MIC ON';
             document.getElementById('status-msg').textContent = 'Mic active';
 
             detectPitch();
 
         } catch (err) {
-            alert('Microphone access denied: ' + err.message);
+            console.error('Mic processing error:', err.message);
+            alert('Error starting microphone: ' + err.message);
         }
     };
 
