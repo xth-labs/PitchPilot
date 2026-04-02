@@ -433,6 +433,22 @@
 <!-- MAIN APP -->
 
 <script type="module">
+	function loadDemoSong() {
+    // Set the demo URL
+    const demoUrl = "https://www.youtube.com/watch?v=XHaVmFKnK7w";
+
+    // Fill the input field
+    const urlInput = document.getElementById("welcome-url");
+    urlInput.value = demoUrl;
+
+    // Simulate clicking the START button
+    const startButton = document.querySelector(".welcome-btn[onclick='startPitchPilot()']");
+    if (startButton) {
+        startButton.click();
+    } else {
+        console.warn("START button not found!");
+    }
+}
     // ─────────────────────────────────────────────────────────────────────────────
     // CONFIGURATION - UPDATE THESE WITH YOUR ACTUAL VALUES
     // ─────────────────────────────────────────────────────────────────────────────
