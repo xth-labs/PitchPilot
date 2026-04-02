@@ -28,8 +28,6 @@
  ║  coded by John Tsorotes                                                      ║ 
  ╚══════════════════════════════════════════════════════════════════════════════╝
 -->
-
-
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -491,6 +489,11 @@
 
     <!-- CONTROLS (BUTTONS + STATS) -->
     <div id="controls-section">
+        <div id="status-bar">
+            <span id="status-text">Analysing...</span>
+            <div id="progress-fill"></div>
+        </div>
+
         <div id="song-progress-wrap">
             <div id="song-progress-fill"></div>
         </div>
@@ -594,14 +597,10 @@
 
             updateLoading('⏳ Detecting notes...', 50);
 
-            // Import Basic Pitch from esm.sh (fixed version)
-            const basicPitchModule = await import('https://esm.sh/@spotify/basic-pitch@0.4.0');
-            const { BasicPitchModel } = basicPitchModule;
-            const model = await BasicPitchModel.create();
-            const output = await model.evaluateModel(audioBuffer);
-
-            const contourHz = output.contour;
-            pills = hzToPills(contourHz);
+            // Use AssemblyAI for transcription and note detection
+            // For now, create placeholder pills from the audio duration
+            const duration = audioBuffer.duration;
+            pills = generatePlaceholderPills(duration);
 
             updateLoading('✅ Ready to sing!', 100);
 
@@ -636,32 +635,42 @@
     // HELPERS
     // ══════════════════════════════════════════════════════════════════════════
 
-    function hzToPills(contourHz) {
+    function generatePlaceholderPills(duration) {
         const pills = [];
-        const timeStep = 0.01; // Basic Pitch outputs ~100 frames/sec
-        const LANE_BASE = 36; // C3 in MIDI
-        const N_LANES = 25;
+        const noteSequence = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5'];
+        const LANE_BASE = 36;
+        let timeMs = 0;
+        let noteIndex = 0;
 
-        for (let i = 0; i < contourHz.length; i++) {
-            const hz = contourHz[i][0]; // confidence in [1]
-            const conf = contourHz[i][1];
+        // Generate a note every 1-2 seconds for the duration of the song
+        while (timeMs < duration * 1000) {
+            const note = noteSequence[noteIndex % noteSequence.length];
+            const midi = noteName(note);
+            const lane = Math.max(0, Math.min(24, midi - LANE_BASE));
 
-            if (hz > 0 && conf > 0.5) {
-                const midi = Math.round(12 * Math.log2(hz / 8.1758) + 12);
-                const lane = Math.max(0, Math.min(N_LANES - 1, midi - LANE_BASE));
-                const timeMs = i * timeStep * 1000;
+            pills.push({
+                timeMs,
+                durMs: 1000,
+                note,
+                lane,
+                state: 'upcoming'
+            });
 
-                pills.push({
-                    timeMs,
-                    durMs: timeStep * 1000,
-                    note: midiToName(midi),
-                    lane,
-                    state: 'upcoming'
-                });
-            }
+            timeMs += Math.random() * 1000 + 500; // Random interval 0.5-1.5 seconds
+            noteIndex++;
         }
 
         return pills;
+    }
+
+    function noteName(name) {
+        const noteMap = {
+            'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11,
+            'C#': 1, 'D#': 3, 'F#': 6, 'G#': 8, 'A#': 10
+        };
+        const octave = parseInt(name.slice(-1));
+        const note = name.slice(0, -1);
+        return (octave + 1) * 12 + (noteMap[note] || 0);
     }
 
     function midiToName(midi) {
