@@ -7,21 +7,21 @@
  ║    • Spotify's Basic Pitch (ML note detection) — runs fully in-browser       ║
  ║    • AssemblyAI word-level transcription (optional, API key required)        ║
  ║    • Web Audio API real-time microphone pitch detection (autocorrelation)    ║
- ║    • RapidAPI youtube-mp36 bridge for direct YouTube → MP3 downloads         ║
+ ║    • RapidAPI youtube-mp4-mp3-downloader bridge for YouTube → MP3 downloads  ║
  ║                                                                              ║
  ║  ARCHITECTURE OVERVIEW                                                       ║
  ║  ─────────────────────                                                       ║
  ║  1. User loads audio (file drop OR YouTube URL via RapidAPI)                 ║
  ║  2. "Detect Notes" runs Basic Pitch + AssemblyAI in parallel                 ║
  ║  3. Notes → pill objects rendered on a scrolling canvas timeline             ║
- ║  4. On playback, the RAF loop ticks song time, yncs lyrics + expected note   ║
+ ║  4. On playback, the RAF loop ticks song time, syncs lyrics + expected note  ║
  ║  5. Mic input is autocorrelated each audio frame → smoothed note name        ║
  ║  6. Sung note vs. expected note → colour feedback on the big karaoke word    ║
  ║                                                                              ║
  ║  DEPENDENCIES (all CDN / ESM — no build step)                                ║
  ║    @spotify/basic-pitch  1.0.1   https://esm.sh/                             ║
  ║    AssemblyAI REST API   v2      https://api.assemblyai.com/                 ║
- ║    youtube-mp36 (RapidAPI)       https://rapidapi.com/ytjar/api/youtube-mp36 ║
+ ║    youtube-mp4-mp3-downloader (RapidAPI)                                      ║
  ║                                                                              ║ 
  ║  YOU CAN ALWAYS FIND ME ON GITHUB IF YOU HAVE FURTHER QUESTIONS              ║   
  ║  https://github.com/onlyGod-can-Intimidate-me/PitchPilot                     ║
@@ -132,10 +132,35 @@
             cursor: not-allowed;
         }
 
+        #welcome-error {
+            color: #ff6b6b;
+            margin-top: 16px;
+            font-size: clamp(12px, 3vw, 14px);
+            line-height: 1.4;
+            min-height: 40px;
+            word-wrap: break-word;
+        }
+
+        #progress-bar {
+            width: 100%;
+            height: 4px;
+            background: #222;
+            border-radius: 2px;
+            margin-top: 16px;
+            overflow: hidden;
+        }
+
+        #progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #E91E63, #FF1744);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
         /* ── MAIN CONTAINER ────────────────────────────────────────────────────── */
         #app-container {
             flex: 1;
-            display: flex;
+            display: none;
             flex-direction: column;
             padding: 8px;
             gap: 8px;
@@ -243,38 +268,26 @@
         }
 
         #big-word {
-            font-size: clamp(48px, 20vw, 120px);
+            font-size: clamp(32px, 15vw, 72px);
             font-weight: bold;
+            margin: 16px 0;
+            transition: all 0.1s ease;
             letter-spacing: 2px;
-            color: #c8e600;
-            line-height: 1;
-            margin-bottom: 16px;
-            transition: color 0.08s ease;
-            word-wrap: break-word;
         }
 
         #big-word.correct {
-            color: #fff;
+            color: #4CAF50;
+            transform: scale(1.1);
         }
 
         #big-word.too-high {
             color: #c8e600;
+            transform: translateY(-4px);
         }
 
         #big-word.too-low {
             color: #f44336;
-        }
-
-        #note-display.correct {
-            color: #fff;
-        }
-
-        #note-display.too-high {
-            color: #c8e600;
-        }
-
-        #note-display.too-low {
-            color: #f44336;
+            transform: translateY(4px);
         }
 
         #note-display {
@@ -319,6 +332,42 @@
             font-size: 12px !important;
             min-height: auto;
         }
+
+        button {
+            background: #E91E63;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 12px 16px;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        button:active {
+            transform: scale(0.96);
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        #progress-container {
+            margin-top: 16px;
+        }
+
+        #status-msg {
+            font-size: 13px;
+            color: #888;
+            margin-top: 8px;
+        }
+
+        #progress-fill {
+            background: linear-gradient(90deg, #E91E63, #FF1744);
+        }
     </style>
 </head>
 <body>
@@ -338,113 +387,95 @@
                 id="welcome-url"
                 class="welcome-input"
                 placeholder="Paste YouTube URL..."
-                onkeydown="if(event.key==='Enter') startPitchPilot()"
-            >
-            <button class="welcome-btn" onclick="startPitchPilot()">▶ START</button>
-            <div id="welcome-error" style="color: #f44336; font-size: 12px; margin-top: 12px;"></div>
+            />
+            <button class="welcome-btn" onclick="startPitchPilot()">START</button>
+            <div id="welcome-error"></div>
         </div>
 
-        <div id="welcome-step-2" style="display:none;">
-            <div id="loading-text" class="welcome-text">⏳ Downloading audio...</div>
-            <div style="width:100%; background:#111; border-radius:4px; padding:2px; margin:16px 0;">
-                <div id="loading-progress" style="height:8px; background:#E91E63; width:0%; border-radius:4px; transition:width 0.3s;"></div>
+        <div id="welcome-step-2" style="display: none;">
+            <div id="status-msg" style="font-size: 16px; margin-bottom: 16px;">⏳ Preparing...</div>
+            <div id="progress-bar">
+                <div id="progress-fill"></div>
             </div>
-            <div style="font-size:11px; color:#555; text-align:center;" id="loading-detail">0%</div>
+            <div style="font-size: 12px; color: #888; margin-top: 12px; line-height: 1.6;">
+                <div id="detailed-status">Initializing...</div>
+            </div>
         </div>
     </div>
 </div>
 
 <!-- MAIN APP -->
-<div id="app-container" style="display:none;">
-
-    <!-- PITCH CANVAS AT TOP -->
+<div id="app-container">
     <div id="mini-canvas-wrap">
         <canvas id="mini-canvas"></canvas>
     </div>
 
-    <!-- BIG LYRICS CENTER -->
     <div id="lyrics-section">
         <div id="key-legend">
-            <div class="k-correct">🟢 CORRECT</div>
-            <div class="k-high">🟡 TOO HIGH</div>
-            <div class="k-low">🔴 TOO LOW</div>
+            <div><span class="k-correct">●</span> On pitch</div>
+            <div><span class="k-high">●</span> Too high</div>
+            <div><span class="k-low">●</span> Too low</div>
         </div>
-        <div id="big-word">Ready</div>
+        <div id="big-word">♪</div>
         <div id="note-display">—</div>
+        <div id="status-msg">Ready to play</div>
     </div>
 
-    <!-- BUTTONS AT BOTTOM -->
     <div id="controls-section">
-        <div id="progress-bar">
-            <div id="progress-fill"></div>
-        </div>
-        <div id="status-msg">Ready</div>
         <div id="button-row">
-            <button id="mic-btn" onclick="window.requestMicrophoneAccess()" style="background:#00BCD4;">🎤 MIC</button>
-            <button id="play-btn" onclick="window.play()" style="background:#4CAF50;">▶ PLAY</button>
-            <button id="stop-btn" onclick="window.stop()" style="background:#444;">⏹ STOP</button>
-            <button id="loop-btn" onclick="window.toggleLoop()" style="background:#FF9800;">🔁 LOOP</button>
+            <button id="play-btn" onclick="window.play()">▶ Play</button>
+            <button id="pause-btn" onclick="window.pause()">⏸ Pause</button>
+            <button id="loop-btn" onclick="window.toggleLoop()">🔁 Loop</button>
+            <button id="mic-btn" onclick="toggleMic()">🎤 OFF</button>
         </div>
     </div>
-
 </div>
 
-<script>
+<script type="module">
+    // ─────────────────────────────────────────────────────────────────────────────
+    // CONFIGURATION - UPDATE THESE WITH YOUR ACTUAL VALUES
+    // ─────────────────────────────────────────────────────────────────────────────
     const WORKER_URL = 'https://lingering-mouse-8c7c.tsorotes-john.workers.dev/youtube';
-    const HF_TOKEN = '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';
-    const AAI_TOKEN = '9b1ed985cab647eabfbba182fc0cdfb3';
     const RAPIDAPI_KEY = '38fe2f4d6dmshb20807c839504ffp112b93jsn4a00c20abfb3';
+    const ASSEMBLYAI_KEY = 'PLACE_YOUR_ASSEMBLYAI_KEY_HERE';
 
-    // Global state
-    let audioContext = null;
-    let audioBuffer = null;
-    let audioSource = null;
-    let isPlaying = false;
-    let isLooping = false;
-    let playbackStart = 0;
-    let pills = [];
-    let currentExpected = null;
-    let canvas = null;
-    let ctx = null;
-    let rafId = null;
+    // ─────────────────────────────────────────────────────────────────────────────
+    // GLOBAL STATE
+    // ─────────────────────────────────────────────────────────────────────────────
+    let audioContext, audioBuffer, pills = [], isPlaying = false, isLooping = false;
+    let playbackStart = 0, rafId = null, canvas = null, ctx = null;
+    let micStream, micProcessor, currentMicPitch = -1, currentExpected = null;
 
-    async function startPitchPilot() {
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ENTRY POINT
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.startPitchPilot = async function() {
         const url = document.getElementById('welcome-url').value.trim();
-        const errorEl = document.getElementById('welcome-error');
-        errorEl.textContent = '';
-
         if (!url) {
-            errorEl.textContent = '❌ Please paste a YouTube URL';
+            showError('Please enter a YouTube URL');
             return;
         }
 
-        const match = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
-        if (!match) {
-            errorEl.textContent = '❌ Could not find YouTube video ID';
+        const videoId = extractVideoId(url);
+        if (!videoId) {
+            showError('Invalid YouTube URL. Use: youtube.com/watch?v=... or youtu.be/...');
             return;
         }
 
-        const videoId = match[1];
-
-        // Show loading
         document.getElementById('welcome-step-1').style.display = 'none';
         document.getElementById('welcome-step-2').style.display = 'block';
 
-        // Request fullscreen
-        const elem = document.documentElement;
-        if (elem.requestFullscreen) {
-            elem.requestFullscreen().catch(() => {});
-        } else if (elem.webkitRequestFullscreen) {
-            elem.webkitRequestFullscreen();
-        }
-
         await downloadAndAnalyse(videoId);
-    }
+    };
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // DOWNLOAD & ANALYZE
+    // ─────────────────────────────────────────────────────────────────────────────
     async function downloadAndAnalyse(videoId) {
-        updateLoading('⏳ Downloading audio...', 10);
-
         try {
+            updateLoading('⏳ Downloading audio from YouTube...', 10, 'Requesting conversion...');
+
+            // Call Worker
             const res = await fetch(WORKER_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -453,24 +484,26 @@
 
             if (!res.ok) {
                 const err = await res.json().catch(() => ({ error: 'Download failed' }));
-                throw new Error(err.error || 'Download error');
+                throw new Error(err.error || `Download error (${res.status})`);
             }
 
+            updateLoading('⏳ Loading audio...', 30, 'Decoding MP3...');
+
             const audioBlob = await res.blob();
-            updateLoading('⏳ Loading audio...', 30);
+            if (audioBlob.size < 1000) {
+                throw new Error('Audio file is corrupted or too small');
+            }
 
             if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
             audioBuffer = await audioContext.decodeAudioData(await audioBlob.arrayBuffer());
 
-            updateLoading('⏳ Extracting lyrics...', 50);
+            updateLoading('⏳ Extracting lyrics...', 50, 'Transcribing with AssemblyAI...');
 
-            // Transcribe with AssemblyAI (returns word objects with timestamps)
+            // Transcribe with AssemblyAI
             const wordObjects = await transcribeAudio(audioBlob);
-            
-            // Create pills from word objects with actual timestamps
             pills = generatePillsFromWordObjects(wordObjects);
 
-            updateLoading('✅ Ready to sing!', 100);
+            updateLoading('✅ Ready to sing!', 100, 'All systems go!');
 
             setTimeout(() => {
                 document.getElementById('welcome-modal').classList.add('hidden');
@@ -482,226 +515,203 @@
             }, 1500);
 
         } catch (err) {
-            updateLoading('❌ ' + err.message, 0);
-            setTimeout(() => {
-                document.getElementById('welcome-step-2').style.display = 'none';
-                document.getElementById('welcome-step-1').style.display = 'block';
-                document.getElementById('welcome-error').textContent = '❌ ' + err.message;
-            }, 2000);
+            showError(err.message);
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // UPDATE LOADING UI
+    // ─────────────────────────────────────────────────────────────────────────────
+    function updateLoading(msg, progress, detail = '') {
+        document.getElementById('status-msg').textContent = msg;
+        document.getElementById('progress-fill').style.width = progress + '%';
+        if (detail) {
+            document.getElementById('detailed-status').textContent = detail;
+        }
+    }
+
+    function showError(msg) {
+        console.error('❌ Error:', msg);
+        updateLoading('❌ ' + msg, 0, '');
+        
+        setTimeout(() => {
+            document.getElementById('welcome-step-2').style.display = 'none';
+            document.getElementById('welcome-step-1').style.display = 'block';
+            document.getElementById('welcome-error').textContent = '❌ ' + msg;
+        }, 2000);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // TRANSCRIBE WITH ASSEMBLYAI
+    // ─────────────────────────────────────────────────────────────────────────────
     async function transcribeAudio(audioBlob) {
         try {
             console.log('Uploading to AssemblyAI...');
             
-            // Step 1 - Upload audio
+            // Upload
             const uploadRes = await fetch('https://api.assemblyai.com/v2/upload', {
                 method: 'POST',
-                headers: {
-                    'authorization': AAI_TOKEN,
-                    'content-type': 'application/octet-stream'
-                },
+                headers: { 'Authorization': ASSEMBLYAI_KEY },
                 body: audioBlob
             });
 
-            if (!uploadRes.ok) {
-                throw new Error('Upload failed: ' + uploadRes.status);
-            }
+            const uploadData = await uploadRes.json();
+            const audioUrl = uploadData.upload_url;
 
-            const { upload_url } = await uploadRes.json();
-            console.log('Uploaded, requesting transcription...');
+            updateLoading('⏳ Extracting lyrics...', 60, 'Submitting for transcription...');
 
-            // Step 2 - Request transcription
+            // Request transcription
             const transcriptRes = await fetch('https://api.assemblyai.com/v2/transcript', {
                 method: 'POST',
                 headers: {
-                    'authorization': AAI_TOKEN,
-                    'content-type': 'application/json'
+                    'Authorization': ASSEMBLYAI_KEY,
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    audio_url: upload_url,
-                    speech_models: ['universal-2']
+                    audio_url: audioUrl,
+                    language_code: 'en',
+                    speech_threshold: 0.5
                 })
             });
 
-            const { id } = await transcriptRes.json();
-            console.log('Transcription job ID:', id);
+            const transcriptData = await transcriptRes.json();
+            const transcriptId = transcriptData.id;
 
-            // Step 3 - Poll for completion
-            for (let i = 0; i < 60; i++) {
-                await new Promise(r => setTimeout(r, 2000));
+            updateLoading('⏳ Extracting lyrics...', 70, 'Processing transcription...');
 
-                const pollRes = await fetch(`https://api.assemblyai.com/v2/transcript/${id}`, {
-                    headers: { 'authorization': AAI_TOKEN }
+            // Poll for completion
+            let transcript;
+            for (let i = 0; i < 600; i++) {
+                await new Promise(r => setTimeout(r, 1000));
+
+                const statusRes = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
+                    headers: { 'Authorization': ASSEMBLYAI_KEY }
                 });
 
-                const data = await pollRes.json();
-                console.log('Status:', data.status);
+                transcript = await statusRes.json();
 
-                if (data.status === 'completed') {
-                    const words = data.words || [];
-                    console.log('Got', words.length, 'words with timestamps');
-                    // Return the full word objects with timestamps
-                    return words;
+                if (transcript.status === 'completed') {
+                    console.log('✅ Transcription complete');
+                    return transcript.words || [];
                 }
 
-                if (data.status === 'error') {
-                    throw new Error('Transcription error: ' + data.error);
+                if (transcript.status === 'error') {
+                    throw new Error('Transcription failed: ' + (transcript.error || 'Unknown error'));
+                }
+
+                if (i % 10 === 0) {
+                    updateLoading('⏳ Extracting lyrics...', 70 + (i % 10), 'Still processing...');
                 }
             }
 
             throw new Error('Transcription timeout');
 
         } catch (err) {
-            console.error('AssemblyAI error:', err);
-            return 'sing along with the melody';
+            console.error('Transcription error:', err);
+            throw new Error('Could not extract lyrics: ' + err.message);
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // GENERATE PILLS FROM TRANSCRIPTION
+    // ─────────────────────────────────────────────────────────────────────────────
     function generatePillsFromWordObjects(wordObjects) {
-        const pills = [];
-        const noteSequence = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5'];
-        
-        // CALIBRATION: Add offset to shift all words later (in ms)
-        // Reduced from 2000 to 500 since lyrics were 1.5s too late
-        const timingOffset = 500;
+        if (!wordObjects || wordObjects.length === 0) return [];
 
-        console.log('Generating pills from', wordObjects.length, 'word objects with timestamps');
-        console.log('Timing offset:', timingOffset, 'ms');
-
-        wordObjects.forEach((wordObj, i) => {
-            // AssemblyAI gives start/end in milliseconds
-            const startMs = wordObj.start + timingOffset;
-            const endMs = wordObj.end + timingOffset;
-            const durationMs = endMs - startMs;
-
-            // Log first few words to debug timing
-            if (i < 5) {
-                console.log(`Word ${i}: "${wordObj.text}" | Original: ${wordObj.start}-${wordObj.end}ms | Adjusted: ${startMs}-${endMs}ms`);
-            }
-
-            pills.push({
-                timeMs: startMs,
-                durMs: durationMs,
-                word: wordObj.text.toUpperCase(),
-                note: noteSequence[i % noteSequence.length],
-                state: 'upcoming'
-            });
-        });
-
-        console.log('Total pills created:', pills.length);
-        console.log('First 5 pills:', pills.slice(0, 5));
-        return pills;
+        return wordObjects.map(w => ({
+            word: w.text || w.word || '?',
+            note: assignNoteToWord(w.text),
+            timeMs: (w.start || 0) / 1000,
+            durMs: ((w.end || 0) - (w.start || 0)) / 1000 || 100
+        }));
     }
 
-    function generatePillsFromWords(words, duration) {
-        const pills = [];
-        const noteSequence = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5'];
-        const timePerWord = (duration * 1000) / Math.max(words.length, 1);
-
-        console.log('Generating pills from', words.length, 'words');
-        console.log('Duration:', duration, 'seconds, time per word:', timePerWord, 'ms');
-        console.log('Words:', words.slice(0, 10).join(', '));
-
-        words.forEach((word, i) => {
-            pills.push({
-                timeMs: i * timePerWord,
-                durMs: timePerWord * 0.8,
-                word: word.toUpperCase(),
-                note: noteSequence[i % noteSequence.length],
-                state: 'upcoming'
-            });
-        });
-
-        console.log('Total pills created:', pills.length);
-        return pills;
+    function assignNoteToWord(word) {
+        const notes = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4'];
+        const hash = word.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+        return notes[hash % notes.length];
     }
 
-    function updateLoading(text, pct) {
-        document.getElementById('loading-text').textContent = text;
-        document.getElementById('loading-progress').style.width = pct + '%';
-        document.getElementById('loading-detail').textContent = pct + '%';
+    // ─────────────────────────────────────────────────────────────────────────────
+    // EXTRACT VIDEO ID FROM URL
+    // ─────────────────────────────────────────────────────────────────────────────
+    function extractVideoId(url) {
+        const patterns = [
+            /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+            /^([a-zA-Z0-9_-]{11})$/
+        ];
+
+        for (const pattern of patterns) {
+            const match = url.match(pattern);
+            if (match) return match[1];
+        }
+        return null;
     }
 
-    function initAudio() {
-        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    }
-
-    function initCanvas() {
-        canvas = document.getElementById('mini-canvas');
-        ctx = canvas.getContext('2d');
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
-    }
-
-    function resizeCanvas() {
-        canvas.width = canvas.offsetWidth || 600;
-        canvas.height = canvas.offsetHeight || 80;
-    }
-
+    // ─────────────────────────────────────────────────────────────────────────────
+    // PLAYBACK CONTROLS
+    // ─────────────────────────────────────────────────────────────────────────────
     window.play = function() {
         if (!audioBuffer) return;
-        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (isPlaying) return;
 
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
         if (audioContext.state === 'suspended') audioContext.resume();
 
-        if (!audioSource) {
-            audioSource = audioContext.createBufferSource();
-            audioSource.buffer = audioBuffer;
-            audioSource.connect(audioContext.destination);
-        }
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+        source.start(0);
 
+        window.currentSource = source;
         isPlaying = true;
         playbackStart = audioContext.currentTime;
-        audioSource.start();
         document.getElementById('play-btn').disabled = true;
-        document.getElementById('status-msg').textContent = 'Playing...';
+        document.getElementById('pause-btn').disabled = false;
 
         loop();
     };
 
-    window.stop = function() {
-        if (audioSource) {
-            try { audioSource.stop(); } catch (e) {}
-            audioSource = null;
-        }
+    window.pause = function() {
+        if (!isPlaying) return;
         isPlaying = false;
+        if (window.currentSource) window.currentSource.stop();
+        if (rafId) cancelAnimationFrame(rafId);
         document.getElementById('play-btn').disabled = false;
-        document.getElementById('status-msg').textContent = 'Stopped';
-        cancelAnimationFrame(rafId);
+        document.getElementById('pause-btn').disabled = true;
+    };
+
+    window.stop = function() {
+        window.pause();
+        if (audioContext) audioContext.currentTime = 0;
     };
 
     window.toggleLoop = function() {
         isLooping = !isLooping;
-        document.getElementById('loop-btn').style.opacity = isLooping ? '1' : '0.6';
-        document.getElementById('status-msg').textContent = isLooping ? 'Loop ON' : 'Loop OFF';
+        document.getElementById('loop-btn').style.opacity = isLooping ? '1' : '0.5';
     };
 
-    let micStream = null;
-    let micProcessor = null;
-    let currentMicPitch = null;
+    // ─────────────────────────────────────────────────────────────────────────────
+    // MIC
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.toggleMic = async function() {
+        if (micStream) {
+            micStream.getTracks().forEach(t => t.stop());
+            micStream = null;
+            micProcessor = null;
+            document.getElementById('mic-btn').style.background = '#666';
+            document.getElementById('mic-btn').textContent = '🎤 OFF';
+            document.getElementById('status-msg').textContent = 'Mic off';
+            return;
+        }
 
-    window.requestMicrophoneAccess = async function() {
         try {
-            if (micStream) {
-                // Turn off mic
-                micStream.getTracks().forEach(track => track.stop());
-                micStream = null;
-                micProcessor = null;
-                document.getElementById('mic-btn').style.background = '#00BCD4';
-                document.getElementById('mic-btn').textContent = '🎤 MIC';
-                document.getElementById('status-msg').textContent = 'Mic off';
-                return;
-            }
-
             if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
             if (audioContext.state === 'suspended') audioContext.resume();
 
             micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const micSource = audioContext.createMediaStreamAudioSource(micStream);
             
-            // Create analyser for pitch detection
             micProcessor = audioContext.createAnalyser();
             micProcessor.fftSize = 4096;
             micSource.connect(micProcessor);
@@ -710,7 +720,6 @@
             document.getElementById('mic-btn').textContent = '🎤 ON';
             document.getElementById('status-msg').textContent = 'Mic active';
 
-            // Start pitch detection loop
             detectPitch();
 
         } catch (err) {
@@ -718,6 +727,9 @@
         }
     };
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // PITCH DETECTION
+    // ─────────────────────────────────────────────────────────────────────────────
     function detectPitch() {
         if (!micProcessor || !isPlaying) {
             requestAnimationFrame(detectPitch);
@@ -727,28 +739,21 @@
         const dataArray = new Uint8Array(micProcessor.frequencyBinCount);
         micProcessor.getByteFrequencyData(dataArray);
 
-        // Simple pitch detection using autocorrelation
         const pitch = autoCorrelate(dataArray, audioContext.sampleRate);
         currentMicPitch = pitch;
 
-        // Update color based on pitch vs expected
         if (currentExpected && pitch > 0) {
             const expectedMidi = noteToMidi(currentExpected);
             const sungMidi = freqToMidi(pitch);
             const diff = sungMidi - expectedMidi;
 
-            // Within ±1 semitone = correct (white)
             if (Math.abs(diff) <= 1) {
                 document.getElementById('big-word').className = 'correct';
                 document.getElementById('note-display').className = 'correct';
-            }
-            // Too high = yellow
-            else if (diff > 1) {
+            } else if (diff > 1) {
                 document.getElementById('big-word').className = 'too-high';
                 document.getElementById('note-display').className = 'too-high';
-            }
-            // Too low = red
-            else {
+            } else {
                 document.getElementById('big-word').className = 'too-low';
                 document.getElementById('note-display').className = 'too-low';
             }
@@ -816,7 +821,7 @@
         return -1;
     }
 
-  function parabolicInterpolation(buffer, x, size) {
+    function parabolicInterpolation(buffer, x, size) {
         const a = buffer[x];
         const b = buffer[x + 1];
         const c = buffer[x + 2];
@@ -829,6 +834,9 @@
         return a3 / (2 * a2);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ANIMATION LOOP
+    // ─────────────────────────────────────────────────────────────────────────────
     function loop() {
         if (!isPlaying) return;
 
@@ -837,8 +845,6 @@
         const progress = Math.min(100, (elapsed / songDuration) * 100);
         document.getElementById('progress-fill').style.width = progress + '%';
 
-        // Find words that should be displayed RIGHT NOW
-        // Only show a word if we're within its start-end time window
         let currentWord = null;
         for (let p of pills) {
             if (elapsed >= p.timeMs && elapsed <= p.timeMs + p.durMs) {
@@ -847,7 +853,6 @@
             }
         }
 
-        // Also show the NEXT upcoming word if it's very close (within 500ms)
         if (!currentWord) {
             for (let p of pills) {
                 if (p.timeMs > elapsed && p.timeMs - elapsed < 500) {
@@ -889,11 +894,9 @@
         const hitX = W * 0.15;
         const ppm = (W - hitX) / 5000;
 
-        // Clear
         ctx.fillStyle = '#080808';
         ctx.fillRect(0, 0, W, H);
 
-        // Draw background lanes
         ctx.strokeStyle = '#1a1a1a';
         ctx.lineWidth = 1;
         for (let i = 0; i < 3; i++) {
@@ -904,7 +907,6 @@
             ctx.stroke();
         }
 
-        // Draw pills with colors based on note
         const colors = ['#f44336', '#FF9800', '#c8e600', '#4CAF50', '#00BCD4'];
         
         pills.forEach((p, idx) => {
@@ -916,19 +918,30 @@
 
             if (x > W + pw || x + pw < 0) return;
 
-            // Color based on note sequence
             const colorIdx = idx % colors.length;
             ctx.fillStyle = colors[colorIdx];
             ctx.fillRect(Math.max(0, x), py, pw, ph);
         });
 
-        // Hit line (vertical)
         ctx.strokeStyle = '#E91E63';
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(hitX, 0);
         ctx.lineTo(hitX, H);
         ctx.stroke();
+    }
+
+    function initAudio() {
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        document.getElementById('play-btn').disabled = false;
+        document.getElementById('pause-btn').disabled = true;
+    }
+
+    function initCanvas() {
+        canvas = document.getElementById('mini-canvas');
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+        ctx = canvas.getContext('2d');
     }
 </script>
 
