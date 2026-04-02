@@ -496,8 +496,8 @@
 
             updateLoading('⏳ Downloading audio...', 30, 'Fetching from CDN...');
 
-            // Download audio from the URL
-            const audioRes = await fetch(data.downloadUrl);
+            // Download audio through Worker (avoids CORS blocking)
+            const audioRes = await fetch(WORKER_URL.replace('/youtube', '/download') + '?url=' + encodeURIComponent(data.downloadUrl));
             if (!audioRes.ok) {
                 throw new Error(`Failed to download audio: ${audioRes.status}`);
             }
