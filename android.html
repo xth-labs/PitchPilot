@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <!--
  ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -428,6 +427,7 @@
             <button id="pause-btn" onclick="window.pause()">⏸ Pause</button>
             <button id="loop-btn" onclick="window.toggleLoop()">🔁 Loop</button>
             <button id="mic-btn" onclick="toggleMic()">🎤 OFF</button>
+            <button id="fullscreen-btn" onclick="window.toggleFullscreen()">✕</button>
         </div>
     </div>
 </div>
@@ -533,6 +533,9 @@
                 initCanvas();
                 document.getElementById('big-word').textContent = '♪';
                 document.getElementById('status-msg').textContent = 'Ready to play';
+                
+                // Request fullscreen
+                requestFullscreen();
             }, 1500);
 
         } catch (err) {
@@ -775,9 +778,11 @@
     window.toggleMic = async function() {
         if (!micStream) {
             try {
+                console.log('Requesting microphone...');
                 micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                console.log('✅ Got microphone permission');
+                console.log('✅ Microphone permission granted');
             } catch (err) {
+                console.error('Mic permission error:', err);
                 alert('Microphone access denied: ' + err.message);
                 return;
             }
@@ -785,43 +790,95 @@
 
         if (micProcessor) {
             // Turn OFF
+            console.log('Turning mic OFF');
             micStream.getTracks().forEach(t => t.stop());
             micStream = null;
             micProcessor = null;
             document.getElementById('mic-btn').style.background = '#00BCD4';
-            document.getElementById('mic-btn').textContent = '🎤 MIC OFF';
+            document.getElementById('mic-btn').textContent = '🎤 MIC';
             document.getElementById('status-msg').textContent = 'Mic off';
             return;
         }
 
         // Turn ON
         try {
-            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioContext.state === 'suspended') await audioContext.resume();
-
-            // Check if method exists
-            if (!audioContext.createMediaStreamAudioSource) {
-                throw new Error('Your browser does not support microphone input');
+            console.log('Turning mic ON');
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
             }
 
-            const micSource = audioContext.createMediaStreamAudioSource(micStream);
-            
+            console.log('Creating analyzer...');
             micProcessor = audioContext.createAnalyser();
             micProcessor.fftSize = 4096;
-            micSource.connect(micProcessor);
+            
+            // Try to connect the stream
+            console.log('Connecting stream to analyzer...');
+            try {
+                const micSource = audioContext.createMediaStreamAudioSource(micStream);
+                micSource.connect(micProcessor);
+            } catch (e) {
+                console.warn('createMediaStreamAudioSource failed, trying alternative...');
+                // Fallback: just use the analyser without connecting source
+                // This is for browsers that don't support it
+                micProcessor = null;
+                alert('Your browser doesn\'t support real-time pitch detection. But you can still sing!');
+                return;
+            }
 
             document.getElementById('mic-btn').style.background = '#4CAF50';
-            document.getElementById('mic-btn').textContent = '🎤 MIC ON';
-            document.getElementById('status-msg').textContent = 'Mic active';
+            document.getElementById('mic-btn').textContent = '🎤 MIC';
+            document.getElementById('status-msg').textContent = 'Mic active - singing mode!';
 
             detectPitch();
 
         } catch (err) {
-            console.error('Mic processing error:', err.message);
+            console.error('Mic error:', err);
             alert('Error: ' + err.message);
             micProcessor = null;
         }
     };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // FULLSCREEN
+    // ─────────────────────────────────────────────────────────────────────────────
+    function requestFullscreen() {
+        const elem = document.documentElement;
+        if (elem.requestFullscreen) {
+            elem.requestFullscreen().catch(() => {});
+        } else if (elem.webkitRequestFullscreen) {
+            elem.webkitRequestFullscreen();
+        } else if (elem.msRequestFullscreen) {
+            elem.msRequestFullscreen();
+        }
+        updateFullscreenButton();
+    }
+
+    window.toggleFullscreen = function() {
+        if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
+            requestFullscreen();
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) {
+                document.msExitFullscreen();
+            }
+        }
+        updateFullscreenButton();
+    };
+
+    function updateFullscreenButton() {
+        const btn = document.getElementById('fullscreen-btn');
+        if (!btn) return;
+        
+        const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+        btn.textContent = isFullscreen ? '⊡' : '✕';
+    }
 
     // ─────────────────────────────────────────────────────────────────────────────
     // PITCH DETECTION
