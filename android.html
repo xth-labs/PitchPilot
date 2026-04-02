@@ -420,7 +420,7 @@
     // ─────────────────────────────────────────────────────────────────────────────
     let audioContext, audioBuffer, pills = [], isPlaying = false, isLooping = false;
     let playbackStart = 0, rafId = null, canvas = null, ctx = null;
-    let micStream, micProcessor, currentMicPitch = -1, currentExpected = null;
+    let micStream, micProcessor, micSource, currentMicPitch = -1, currentExpected = null;
 
     // ─────────────────────────────────────────────────────────────────────────────
     // ENTRY POINT
@@ -780,45 +780,58 @@
         
         console.log('⏹ Playback stopped');
     };
+    // Request mic permission (called on PLAY) - just gets permission, doesn't connect
     async function requestMicPermission() {
         try {
-            if (micStream) return; // Already have it
+            if (micStream) {
+                console.log('✅ Microphone stream already available');
+                return;
+            }
             
+            console.log('🎤 Pre-requesting microphone permission on play...');
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             micStream = stream;
-            console.log('✅ Microphone permission granted');
+            console.log('✅ Microphone permission granted and stream ready');
             document.getElementById('mic-btn').disabled = false;
-            document.getElementById('mic-btn').textContent = '🎤 MIC ON';
+            document.getElementById('mic-btn').textContent = '🎤 MIC OFF';
+            document.getElementById('status-msg').textContent = 'Mic permission granted - tap Mic button to start pitch detection';
         } catch (err) {
-            console.log('Mic permission denied (optional):', err.message);
+            console.log('ℹ️ Mic permission not yet needed (optional):', err.message);
             document.getElementById('mic-btn').disabled = true;
         }
     }
 
     // Toggle mic on/off
     window.toggleMic = async function() {
-        if (!micStream) {
-            try {
-                console.log('Requesting microphone...');
-                micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                console.log('✅ Microphone permission granted');
-            } catch (err) {
-                console.error('Mic permission error:', err);
-                alert('Microphone access denied: ' + err.message);
-                return;
-            }
-        }
-
+        // Check if mic is already on
         if (micProcessor) {
             // Turn OFF
-            console.log('Turning mic OFF');
+            console.log('🎤 Turning mic OFF');
+            if (micSource) {
+                try { micSource.disconnect(); } catch (e) {}
+                micSource = null;
+            }
             micStream.getTracks().forEach(t => t.stop());
             micStream = null;
             micProcessor = null;
             document.getElementById('mic-btn').style.background = '#00BCD4';
-            document.getElementById('mic-btn').textContent = '🎤 MIC';
+            document.getElementById('mic-btn').textContent = '🎤 MIC OFF';
             document.getElementById('status-msg').textContent = 'Mic off';
+            console.log('🔇 Mic fully disconnected');
             return;
+        }
+
+        // Get microphone stream if we don't have one
+        if (!micStream) {
+            try {
+                console.log('🎤 Requesting microphone permission...');
+                micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                console.log('✅ Microphone permission granted');
+            } catch (err) {
+                console.error('❌ Mic permission error:', err);
+                alert('Microphone access denied: ' + err.message);
+                return;
+            }
         }
 
         // Turn ON
@@ -840,11 +853,13 @@
             micProcessor.fftSize = 4096;
             console.log('✓ AnalyserNode created | FFT size:', micProcessor.fftSize);
             
-            // Try to connect the stream
+            // Try to connect the stream (only do this if not already connected)
             console.log('🔌 Attempting to connect MediaStream to analyser...');
             try {
-                const micSource = audioContext.createMediaStreamAudioSource(micStream);
-                console.log('✓ MediaStreamAudioSource created');
+                if (!micSource) {
+                    micSource = audioContext.createMediaStreamAudioSource(micStream);
+                    console.log('✓ MediaStreamAudioSource created');
+                }
                 
                 micSource.connect(micProcessor);
                 console.log('✓✓ STREAM CONNECTED TO ANALYSER - Audio should now flow!');
@@ -852,8 +867,8 @@
                 console.log('🎙️ Audio track enabled:', micStream.getAudioTracks()[0]?.enabled);
                 
             } catch (e) {
-                console.error('❌ createMediaStreamAudioSource failed:', e);
-                console.error('This usually means the mic stream is already connected or browser incompatibility');
+                console.error('❌ Error connecting stream:', e);
+                console.error('This usually means browser incompatibility');
                 micProcessor = null;
                 alert('Your browser doesn\'t support real-time pitch detection. But you can still sing!');
                 return;
