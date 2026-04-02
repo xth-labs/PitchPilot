@@ -452,12 +452,11 @@
 
             updateLoading('⏳ Extracting lyrics...', 50);
 
-            // Transcribe with HuggingFace Whisper
-            const transcription = await transcribeAudio(audioBlob);
-            const words = transcription.split(/\s+/).filter(w => w.length > 0);
+            // Transcribe with AssemblyAI (returns word objects with timestamps)
+            const wordObjects = await transcribeAudio(audioBlob);
             
-            // Create pills from words
-            pills = generatePillsFromWords(words, audioBuffer.duration);
+            // Create pills from word objects with actual timestamps
+            pills = generatePillsFromWordObjects(wordObjects);
 
             updateLoading('✅ Ready to sing!', 100);
 
@@ -530,9 +529,9 @@
 
                 if (data.status === 'completed') {
                     const words = data.words || [];
-                    const text = words.map(w => w.text).join(' ');
-                    console.log('Transcribed:', text.substring(0, 100));
-                    return text;
+                    console.log('Got', words.length, 'words with timestamps');
+                    // Return the full word objects with timestamps
+                    return words;
                 }
 
                 if (data.status === 'error') {
@@ -546,6 +545,32 @@
             console.error('AssemblyAI error:', err);
             return 'sing along with the melody';
         }
+    }
+
+    function generatePillsFromWordObjects(wordObjects) {
+        const pills = [];
+        const noteSequence = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5'];
+
+        console.log('Generating pills from', wordObjects.length, 'word objects with timestamps');
+
+        wordObjects.forEach((wordObj, i) => {
+            // AssemblyAI gives start/end in milliseconds
+            const startMs = wordObj.start;
+            const endMs = wordObj.end;
+            const durationMs = endMs - startMs;
+
+            pills.push({
+                timeMs: startMs,
+                durMs: durationMs,
+                word: wordObj.text.toUpperCase(),
+                note: noteSequence[i % noteSequence.length],
+                state: 'upcoming'
+            });
+        });
+
+        console.log('Total pills created:', pills.length);
+        console.log('First 5 pills:', pills.slice(0, 5));
+        return pills;
     }
 
     function generatePillsFromWords(words, duration) {
