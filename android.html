@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <!--
  ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -759,35 +758,37 @@
         loop();
     }
 
-    // Request mic permission (called on PLAY)
-    async function requestMicPermission() {
-        try {
-            if (micStream) return; // Already have it
-            
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            micStream = stream;
-            console.log('✅ Microphone permission granted');
-            document.getElementById('mic-btn').disabled = false;
-            document.getElementById('mic-btn').textContent = '🎤 MIC ON';
-        } catch (err) {
-            console.log('Mic permission denied (optional):', err.message);
-            document.getElementById('mic-btn').disabled = true;
-        }
-    }
+	 async function requestMicPermission() {
+		try {
+			// Always request a fresh stream (prevents dead stream reuse)
+			micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-    // Toggle mic on/off
-    window.toggleMic = async function() {
-        if (!micStream) {
-            try {
-                console.log('Requesting microphone...');
-                micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                console.log('✅ Microphone permission granted');
-            } catch (err) {
-                console.error('Mic permission error:', err);
-                alert('Microphone access denied: ' + err.message);
-                return;
-            }
-        }
+			console.log('✅ Microphone permission granted');
+			document.getElementById('mic-btn').disabled = false;
+			document.getElementById('mic-btn').textContent = '🎤 MIC ON';
+
+		} catch (err) {
+			console.log('Mic permission denied:', err.message);
+			document.getElementById('mic-btn').disabled = true;
+		}
+	}
+
+		// Toggle mic on/off
+		window.toggleMic = async function() {
+		  if (
+    !micStream ||
+    !micStream.getTracks().length ||
+    micStream.getTracks()[0].readyState === 'ended'
+)		try {
+					console.log('Requesting microphone...');
+					micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+					console.log('✅ Microphone permission granted');
+				} catch (err) {
+					console.error('Mic permission error:', err);
+					alert('Microphone access denied: ' + err.message);
+					return;
+				}
+			}
 
         if (micProcessor) {
             // Turn OFF
@@ -1099,6 +1100,5 @@
     }
 </script>
 
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"88ae93dc204b4258bbe6a74b2de0d960","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
