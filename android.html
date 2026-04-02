@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <!--
  ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -9,6 +8,10 @@
  ║    • AssemblyAI word-level transcription (optional, API key required)        ║
  ║    • Web Audio API real-time microphone pitch detection (autocorrelation)    ║
  ║    • RapidAPI youtube-mp4-mp3-downloader bridge for YouTube → MP3 downloads  ║
+ ║                                                                              ║
+ ║  MODIFIED: Added URL parameter support for auto-loading YouTube videos       ║
+ ║  Usage: pitchpilot.html?video=https://www.youtube.com/watch?v=VIDEO_ID       ║
+ ║         pitchpilot.html?video=VIDEO_ID (11-char ID)                          ║
  ║                                                                              ║
  ║  ARCHITECTURE OVERVIEW                                                       ║
  ║  ─────────────────────                                                       ║
@@ -22,7 +25,7 @@
  ║  DEPENDENCIES (all CDN / ESM — no build step)                                ║
  ║    @spotify/basic-pitch  1.0.1   https://esm.sh/                             ║
  ║    AssemblyAI REST API   v2      https://api.assemblyai.com/                 ║
- ║    youtube-mp4-mp3-downloader (RapidAPI)                                      ║
+ ║    youtube-mp4-mp3-downloader (RapidAPI)                                     ║
  ║                                                                              ║ 
  ║  YOU CAN ALWAYS FIND ME ON GITHUB IF YOU HAVE FURTHER QUESTIONS              ║   
  ║  https://github.com/onlyGod-can-Intimidate-me/PitchPilot                     ║
@@ -378,10 +381,107 @@
         #progress-fill {
             background: linear-gradient(90deg, #E91E63, #FF1744);
         }
+
+        /* ── VIDEO TITLE & SHARE ────────────────────────────────────────────── */
+        #video-info-bar {
+            background: linear-gradient(90deg, #1a1a1a, #0f0f0f);
+            border-bottom: 1px solid #333;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            min-height: 50px;
+        }
+
+        #video-title {
+            flex: 1;
+            font-size: clamp(12px, 2.5vw, 16px);
+            color: #E91E63;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            letter-spacing: 1px;
+        }
+
+        #share-btn {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            padding: 10px 16px;
+            font-size: 14px;
+            flex-shrink: 0;
+            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        #share-btn:active {
+            transform: scale(0.95);
+            box-shadow: 0 1px 4px rgba(76, 175, 80, 0.2);
+        }
+
+        #share-notification {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 2000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        #share-notification.show {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
 <script>
+// ─────────────────────────────────────────────────────────────────────────────
+// URL PARAMETER HANDLER - Parse and auto-load YouTube video if provided
+// ─────────────────────────────────────────────────────────────────────────────
+window.handleUrlParams = function() {
+    const params = new URLSearchParams(window.location.search);
+    const videoParam = params.get('video');
+    
+    if (videoParam) {
+        console.log('🎬 Found video parameter:', videoParam.substring(0, 50) + '...');
+        const urlInput = document.getElementById('welcome-url');
+        
+        // Decode the parameter (in case it's URL-encoded)
+        const decodedUrl = decodeURIComponent(videoParam);
+        urlInput.value = decodedUrl;
+        
+        console.log('✅ Pre-filled URL input with:', decodedUrl.substring(0, 50) + '...');
+        
+        // Optional: Auto-start after a short delay to let DOM render
+        // Uncomment the line below if you want auto-start
+        setTimeout(() => {
+            const startBtn = document.querySelector(".welcome-btn[onclick='startPitchPilot()']");
+            if (startBtn) {
+                console.log('🚀 Auto-starting PitchPilot...');
+                startBtn.click();
+            }
+        }, 500);
+    }
+};
+
+// Call when DOM is ready
+document.addEventListener('DOMContentLoaded', window.handleUrlParams);
+
+// Also call it immediately in case DOM is already loaded
+window.handleUrlParams();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEMO BUTTON - Hardcoded demo song
+// ─────────────────────────────────────────────────────────────────────────────
 window.loadDemoSong = function() {
     const demoUrl = "https://www.youtube.com/watch?v=XHaVmFKnK7w";
     const urlInput = document.getElementById("welcome-url");
@@ -446,6 +546,10 @@ window.loadDemoSong = function() {
     let audioContext, audioBuffer, pills = [], isPlaying = false, isLooping = false;
     let playbackStart = 0, rafId = null, canvas = null, ctx = null;
     let micStream, micProcessor, micSource, currentMicPitch = -1, currentExpected = null;
+    let pitchDebugCounter = 0;
+    let currentVideoId = null;
+    let currentVideoTitle = 'Loading...';
+
 
     // ─────────────────────────────────────────────────────────────────────────────
     // ENTRY POINT
@@ -463,6 +567,7 @@ window.loadDemoSong = function() {
             return;
         }
 
+        currentVideoId = videoId;
         document.getElementById('welcome-step-1').style.display = 'none';
         document.getElementById('welcome-step-2').style.display = 'block';
 
@@ -470,10 +575,99 @@ window.loadDemoSong = function() {
     };
 
     // ─────────────────────────────────────────────────────────────────────────────
+    // FETCH VIDEO TITLE FROM YOUTUBE (via noembed API - no key needed)
+    // ─────────────────────────────────────────────────────────────────────────────
+    async function fetchVideoTitle(videoId) {
+        try {
+            // Using noembed.com API - free, no authentication needed
+            const response = await fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}`);
+            
+            if (!response.ok) {
+                console.warn('⚠️ Failed to fetch video title:', response.status);
+                return 'Unknown Song';
+            }
+
+            const data = await response.json();
+            const title = data.title || 'Unknown Song';
+            console.log('✅ Video title fetched:', title);
+            return title;
+        } catch (err) {
+            console.warn('⚠️ Could not fetch video title:', err.message);
+            return 'Unknown Song';
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // SHARE BUTTON - Copy shareable URL to clipboard
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.shareCurrentSession = async function() {
+        if (!currentVideoId) {
+            console.warn('No video loaded');
+            return;
+        }
+
+        // Build the share URL with the current video ID
+        const baseUrl = window.location.origin + window.location.pathname;
+        const fullUrl = `${baseUrl}?video=${currentVideoId}`;
+
+        try {
+            // Try using modern Clipboard API first
+            await navigator.clipboard.writeText(fullUrl);
+            showShareNotification('✅ Link copied to clipboard!');
+            console.log('📋 Share URL copied:', fullUrl);
+        } catch (err) {
+            // Fallback for older browsers
+            console.warn('Clipboard API failed, trying fallback:', err);
+            const textArea = document.createElement('textarea');
+            textArea.value = fullUrl;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.select();
+            
+            try {
+                document.execCommand('copy');
+                showShareNotification('✅ Link copied to clipboard!');
+                console.log('📋 Share URL copied (fallback):', fullUrl);
+            } catch (e) {
+                showShareNotification('❌ Could not copy link');
+                console.error('Copy failed:', e);
+            }
+            
+            document.body.removeChild(textArea);
+        }
+    };
+
+    // Show a notification toast for share action
+    function showShareNotification(message) {
+        let notification = document.getElementById('share-notification');
+        
+        if (!notification) {
+            notification = document.createElement('div');
+            notification.id = 'share-notification';
+            document.body.appendChild(notification);
+        }
+
+        notification.textContent = message;
+        notification.classList.add('show');
+
+        setTimeout(() => {
+            notification.classList.remove('show');
+        }, 2500);
+    }
+
+
+    // ─────────────────────────────────────────────────────────────────────────────
     // DOWNLOAD & ANALYZE
     // ─────────────────────────────────────────────────────────────────────────────
     async function downloadAndAnalyse(videoId) {
         try {
+            updateLoading('⏳ Getting video info...', 5, 'Fetching title...');
+
+            // Fetch the video title in parallel
+            currentVideoTitle = await fetchVideoTitle(videoId);
+            console.log('🎬 Video title set to:', currentVideoTitle);
+
             updateLoading('⏳ Getting download link...', 10, 'Contacting API...');
 
             // Call Worker - returns JSON with downloadUrl
@@ -533,6 +727,9 @@ window.loadDemoSong = function() {
                 initCanvas();
                 document.getElementById('big-word').textContent = '♪';
                 document.getElementById('status-msg').textContent = 'Ready to play';
+                
+                // Display the video title in the info bar
+                document.getElementById('video-title').textContent = currentVideoTitle;
                 
                 // Request fullscreen
                 requestFullscreen();
@@ -762,7 +959,7 @@ window.loadDemoSong = function() {
     window.pause = function() {
         if (!isPlaying) return;
         
-        isPlaying = falsed
+        isPlaying = false;
         
         if (window.currentSource) {
             try { window.currentSource.stop(); } catch (e) {}
@@ -805,6 +1002,7 @@ window.loadDemoSong = function() {
         
         console.log('⏹ Playback stopped');
     };
+    
     // Request mic permission (called on PLAY) - just gets permission, doesn't connect
     async function requestMicPermission() {
         try {
@@ -883,126 +1081,96 @@ window.loadDemoSong = function() {
             try {
                console.log('🔌 Creating MediaStreamAudioSource (Android-safe)...');
 
-			// Use the existing audioContext
-			if (!audioContext.createMediaStreamSource) {
-				alert('AudioContext does not support createMediaStreamSource!');
-				return;
-			}
+				// Use the existing audioContext
+				if (!audioContext.createMediaStreamSource) {
+					alert('AudioContext does not support createMediaStreamSource!');
+					return;
+				}
 
-			// Create the source
-			micSource = audioContext.createMediaStreamSource(micStream);
+				// Create the source
+				micSource = audioContext.createMediaStreamSource(micStream);
 
-			// Connect to analyser
-			micSource.connect(micProcessor);
-			console.log('✓ Mic connected!');
+				// Connect to analyser
+				micSource.connect(micProcessor);
+				console.log('✓ Mic connected!');
             } catch (e) {
                 console.error('Failed:', e.message);
                 alert('Mic not supported on this browser');
                 return;
             }
 
-            document.getElementById('mic-btn').style.backg
+            document.getElementById('mic-btn').style.background = '#4CAF50';
             document.getElementById('mic-btn').textContent = '🎤 MIC ON';
-            document.getElementById('status-msg').textContent = '🎤 Mic active - ready to detect pitch!';
-            console.log('🟢 Microphone is READY for pitch detection');
-
+            document.getElementById('status-msg').textContent = 'Mic active - adjusting your pitch...';
+            console.log('✅ Mic ready for pitch detection');
             detectPitch();
 
         } catch (err) {
-            console.error('❌ Mic error:', err);
-            alert('Error: ' + err.message);
-            micProcessor = null;
+            console.error('❌ Mic turn-on error:', err);
+            alert('Error enabling microphone: ' + err.message);
         }
     };
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // FULLSCREEN
-    // ─────────────────────────────────────────────────────────────────────────────
-    function requestFullscreen() {
-        const elem = document.documentElement;
-        const fsRequest = elem.requestFullscreen?.() || elem.webkitRequestFullscreen?.() || elem.msRequestFullscreen?.();
-        if (fsRequest) {
-            fsRequest.catch(err => {
-                console.error('Fullscreen request failed:', err);
-                document.getElementById('status-msg').textContent = 'Fullscreen unavailable';
-            });
-        }
-        updateFullscreenButton();
-    }
-
-    window.toggleFullscreen = function() {
-        if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
-            requestFullscreen();
-        } else {
-            if (document.exitFullscreen) {
-                document.exitFullscreen();
-            } else if (document.webkitExitFullscreen) {
-                document.webkitExitFullscreen();
-            } else if (document.msExitFullscreen) {
-                document.msExitFullscreen();
+    // Toggle fullscreen
+    window.toggleFullscreen = async function() {
+        try {
+            if (document.fullscreenElement) {
+                await document.exitFullscreen();
+            } else {
+                await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
             }
+        } catch (err) {
+            console.warn('Fullscreen not available:', err.message);
         }
-        updateFullscreenButton();
     };
 
-    function updateFullscreenButton() {
-        const btn = document.getElementById('fullscreen-btn');
-        if (!btn) return;
-        
-        const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
-        btn.textContent = isFullscreen ? '⊡' : '✕';
+    // Request fullscreen on app start
+    function requestFullscreen() {
+        if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen({ navigationUI: 'hide' })
+                .catch(err => console.log('Fullscreen request failed:', err.message));
+        }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // PITCH DETECTION
-    // ─────────────────────────────────────────────────────────────────────────────
-    let pitchDebugCounter = 0;
-    
+    // Toggle loop
+    window.toggleLoop = function() {
+        isLooping = !isLooping;
+        const btn = document.getElementById('loop-btn');
+        btn.style.background = isLooping ? '#4CAF50' : '#E91E63';
+        console.log('🔁 Loop:', isLooping ? 'ON' : 'OFF');
+    };
+
+    // Detect pitch using autocorrelation
     function detectPitch() {
-        if (!micProcessor || !isPlaying) {
-            requestAnimationFrame(detectPitch);
-            return;
-        }
+        if (!micProcessor) return;
 
-        // Use time-domain data for autocorrelation (not frequency data)
-        const dataArray = new Uint8Array(micProcessor.frequencyBinCount);
-        micProcessor.getByteTimeDomainData(dataArray);
-        
-        // Check for audio signal
+        const data = new Uint8Array(micProcessor.frequencyBinCount);
+        micProcessor.getByteFrequencyData(data);
+
+        // Get time-domain data for autocorrelation
+        const timeDomainData = new Float32Array(micProcessor.fftSize);
+        micProcessor.getFloatTimeDomainData(timeDomainData);
+
+        pitchDebugCounter++;
+
+        const pitch = autoCorrelate(timeDomainData, audioContext.sampleRate);
         let rms = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-            const normalized = (dataArray[i] - 128) / 128.0;
-            rms += normalized * normalized;
+        for (let i = 0; i < timeDomainData.length; i++) {
+            rms += timeDomainData[i] * timeDomainData[i];
         }
-        rms = Math.sqrt(rms / dataArray.length);
-        
-        // Convert from Uint8Array to Float32Array for autocorrelation
-        const floatArray = new Float32Array(dataArray.length);
-        for (let i = 0; i < dataArray.length; i++) {
-            floatArray[i] = (dataArray[i] - 128) / 128.0;
-        }
+        rms = Math.sqrt(rms / timeDomainData.length);
 
-        const pitch = autoCorrelate(floatArray, audioContext.sampleRate);
         currentMicPitch = pitch;
 
-        // Log every 30 frames (~500ms at 60fps) for debugging
-        pitchDebugCounter++;
-        if (pitchDebugCounter % 30 === 0) {
-            console.log('🎤 AUDIO SIGNAL: RMS=' + rms.toFixed(4) + ' | Pitch=' + (pitch > 0 ? pitch.toFixed(1) + ' Hz' : 'not detected'));
-            console.log('📊 Audio buffer min/max:', Math.min(...dataArray), '/', Math.max(...dataArray));
-        }
-
-        // Only update colors if we have a valid pitch detection
         if (currentExpected && pitch > 0) {
             const expectedMidi = noteToMidi(currentExpected);
-            const sungMidi = freqToMidi(pitch);
-            const diff = sungMidi - expectedMidi;
+            const pitchMidi = freqToMidi(pitch);
+            const diff = pitchMidi - expectedMidi;
 
-            // Tighter tolerance for pitch matching
-            if (Math.abs(diff) <= 1) {
+            if (diff > -1 && diff < 1) {
                 document.getElementById('big-word').className = 'correct';
                 document.getElementById('note-display').className = 'correct';
-                document.getElementById('status-msg').textContent = '✓ On pitch! (' + pitch.toFixed(1) + ' Hz) RMS: ' + rms.toFixed(3);
+                document.getElementById('status-msg').textContent = '✓ Perfect! (' + pitch.toFixed(1) + ' Hz) RMS: ' + rms.toFixed(3);
             } else if (diff > 1) {
                 document.getElementById('big-word').className = 'too-high';
                 document.getElementById('note-display').className = 'too-high';
@@ -1210,6 +1378,11 @@ window.loadDemoSong = function() {
     }
 </script>
 <div id="app-container">
+    <div id="video-info-bar">
+        <div id="video-title">♪ Song Title</div>
+        <button id="share-btn" onclick="window.shareCurrentSession()">📤 SHARE</button>
+    </div>
+
     <div id="mini-canvas-wrap">
         <canvas id="mini-canvas"></canvas>
     </div>
