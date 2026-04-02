@@ -383,6 +383,19 @@
     const AAI_TOKEN = '9b1ed985cab647eabfbba182fc0cdfb3';
     const RAPIDAPI_KEY = '38fe2f4d6dmshb20807c839504ffp112b93jsn4a00c20abfb3';
 
+    // Global state
+    let audioContext = null;
+    let audioBuffer = null;
+    let audioSource = null;
+    let isPlaying = false;
+    let isLooping = false;
+    let playbackStart = 0;
+    let pills = [];
+    let currentExpected = null;
+    let canvas = null;
+    let ctx = null;
+    let rafId = null;
+
     async function startPitchPilot() {
         const url = document.getElementById('welcome-url').value.trim();
         const errorEl = document.getElementById('welcome-error');
