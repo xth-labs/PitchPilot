@@ -393,44 +393,33 @@ window.loadDemoSong = function() {
 	
 <!-- WELCOME MODAL -->
 <div id="welcome-modal">
-
     <div class="welcome-content">
-        <!-- Title -->
         <div class="welcome-title">🎤 PitchPilot</div>
 
-        <!-- Step 1: Input & Instructions -->
         <div id="welcome-step-1">
             <div class="welcome-text">
                 🎵 Test your pitch instantly!<br>
                 Just drop a YouTube link and press <strong>START</strong>.
             </div>
 
-            <!-- Demo button -->
-      
-
-            <!-- YouTube URL input -->
             <input
                 type="text"
                 id="welcome-url"
                 class="welcome-input"
-                placeholder="PASTE LINK FORM YOUTUBE TO THE SONG YOU WISH TO COVER."
+                placeholder="PASTE LINK FROM YOUTUBE TO THE SONG YOU WISH TO COVER."
             />
 
-            <!-- START button -->
             <button class="welcome-btn" onclick="startPitchPilot()">START</button>
-<BR><BR>
-			    <button class="welcome-btn demo-btn pulse"
-        onclick="loadDemoSong()">
-    🎵 OR click here for a Demo
-</button>
-			<BR>
-            <!-- Error message -->
+
+            <button class="welcome-btn demo-btn" onclick="loadDemoSong()">
+                🎵 OR click here for a Demo
+            </button>
+
             <div id="welcome-error"></div>
         </div>
 
-        <!-- Step 2: Progress / Preparing -->
         <div id="welcome-step-2" style="display: none;">
-            <div id="status-msg" style="font-size: 16px; margin-bottom: 16px;">⏳ Preparing...</div>
+            <div id="status-msg">⏳ Preparing...</div>
             <div id="progress-bar">
                 <div id="progress-fill"></div>
             </div>
@@ -440,7 +429,8 @@ window.loadDemoSong = function() {
         </div>
     </div>
 </div>
-<!-- MAIN APP -->
+	
+	<!-- MAIN APP -->
 
 <script type="module">
 	
