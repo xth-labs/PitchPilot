@@ -550,14 +550,24 @@
     function generatePillsFromWordObjects(wordObjects) {
         const pills = [];
         const noteSequence = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5'];
+        
+        // CALIBRATION: Add offset to shift all words later (in ms)
+        // If first word appears 2 seconds early, set this to 2000
+        const timingOffset = 2000;
 
         console.log('Generating pills from', wordObjects.length, 'word objects with timestamps');
+        console.log('Timing offset:', timingOffset, 'ms');
 
         wordObjects.forEach((wordObj, i) => {
             // AssemblyAI gives start/end in milliseconds
-            const startMs = wordObj.start;
-            const endMs = wordObj.end;
+            const startMs = wordObj.start + timingOffset;
+            const endMs = wordObj.end + timingOffset;
             const durationMs = endMs - startMs;
+
+            // Log first few words to debug timing
+            if (i < 5) {
+                console.log(`Word ${i}: "${wordObj.text}" | Original: ${wordObj.start}-${wordObj.end}ms | Adjusted: ${startMs}-${endMs}ms`);
+            }
 
             pills.push({
                 timeMs: startMs,
@@ -675,15 +685,30 @@
         const progress = Math.min(100, (elapsed / songDuration) * 100);
         document.getElementById('progress-fill').style.width = progress + '%';
 
-        const nearestPill = pills.reduce((best, p) => {
-            const dist = Math.abs(p.timeMs - elapsed);
-            return dist < Math.abs((best?.timeMs ?? Infinity) - elapsed) ? p : best;
-        }, null);
+        // Find words that should be displayed RIGHT NOW
+        // Only show a word if we're within its start-end time window
+        let currentWord = null;
+        for (let p of pills) {
+            if (elapsed >= p.timeMs && elapsed <= p.timeMs + p.durMs) {
+                currentWord = p;
+                break;
+            }
+        }
 
-        if (nearestPill && Math.abs(nearestPill.timeMs - elapsed) < 2000) {
-            currentExpected = nearestPill.note;
-            document.getElementById('big-word').textContent = nearestPill.word;
-            document.getElementById('note-display').textContent = nearestPill.note;
+        // Also show the NEXT upcoming word if it's very close (within 500ms)
+        if (!currentWord) {
+            for (let p of pills) {
+                if (p.timeMs > elapsed && p.timeMs - elapsed < 500) {
+                    currentWord = p;
+                    break;
+                }
+            }
+        }
+
+        if (currentWord) {
+            currentExpected = currentWord.note;
+            document.getElementById('big-word').textContent = currentWord.word;
+            document.getElementById('note-display').textContent = currentWord.note;
         } else {
             document.getElementById('big-word').textContent = '♪';
             document.getElementById('note-display').textContent = '—';
