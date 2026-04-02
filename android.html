@@ -254,7 +254,7 @@
         }
 
         #big-word.correct {
-            color: #4CAF50;
+            color: #fff;
         }
 
         #big-word.too-high {
@@ -262,6 +262,18 @@
         }
 
         #big-word.too-low {
+            color: #f44336;
+        }
+
+        #note-display.correct {
+            color: #fff;
+        }
+
+        #note-display.too-high {
+            color: #c8e600;
+        }
+
+        #note-display.too-low {
             color: #f44336;
         }
 
@@ -552,8 +564,8 @@
         const noteSequence = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5'];
         
         // CALIBRATION: Add offset to shift all words later (in ms)
-        // If first word appears 2 seconds early, set this to 2000
-        const timingOffset = 2000;
+        // Reduced from 2000 to 500 since lyrics were 1.5s too late
+        const timingOffset = 500;
 
         console.log('Generating pills from', wordObjects.length, 'word objects with timestamps');
         console.log('Timing offset:', timingOffset, 'ms');
@@ -666,16 +678,156 @@
         document.getElementById('status-msg').textContent = isLooping ? 'Loop ON' : 'Loop OFF';
     };
 
+    let micStream = null;
+    let micProcessor = null;
+    let currentMicPitch = null;
+
     window.requestMicrophoneAccess = async function() {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            if (micStream) {
+                // Turn off mic
+                micStream.getTracks().forEach(track => track.stop());
+                micStream = null;
+                micProcessor = null;
+                document.getElementById('mic-btn').style.background = '#00BCD4';
+                document.getElementById('mic-btn').textContent = '🎤 MIC';
+                document.getElementById('status-msg').textContent = 'Mic off';
+                return;
+            }
+
+            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioContext.state === 'suspended') audioContext.resume();
+
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const micSource = audioContext.createMediaStreamAudioSource(micStream);
+            
+            // Create analyser for pitch detection
+            micProcessor = audioContext.createAnalyser();
+            micProcessor.fftSize = 4096;
+            micSource.connect(micProcessor);
+
             document.getElementById('mic-btn').style.background = '#4CAF50';
             document.getElementById('mic-btn').textContent = '🎤 ON';
             document.getElementById('status-msg').textContent = 'Mic active';
+
+            // Start pitch detection loop
+            detectPitch();
+
         } catch (err) {
-            alert('Microphone access denied');
+            alert('Microphone access denied: ' + err.message);
         }
     };
+
+    function detectPitch() {
+        if (!micProcessor || !isPlaying) {
+            requestAnimationFrame(detectPitch);
+            return;
+        }
+
+        const dataArray = new Uint8Array(micProcessor.frequencyBinCount);
+        micProcessor.getByteFrequencyData(dataArray);
+
+        // Simple pitch detection using autocorrelation
+        const pitch = autoCorrelate(dataArray, audioContext.sampleRate);
+        currentMicPitch = pitch;
+
+        // Update color based on pitch vs expected
+        if (currentExpected && pitch > 0) {
+            const expectedMidi = noteToMidi(currentExpected);
+            const sungMidi = freqToMidi(pitch);
+            const diff = sungMidi - expectedMidi;
+
+            // Within ±1 semitone = correct (white)
+            if (Math.abs(diff) <= 1) {
+                document.getElementById('big-word').className = 'correct';
+                document.getElementById('note-display').className = 'correct';
+            }
+            // Too high = yellow
+            else if (diff > 1) {
+                document.getElementById('big-word').className = 'too-high';
+                document.getElementById('note-display').className = 'too-high';
+            }
+            // Too low = red
+            else {
+                document.getElementById('big-word').className = 'too-low';
+                document.getElementById('note-display').className = 'too-low';
+            }
+        } else {
+            document.getElementById('big-word').className = '';
+            document.getElementById('note-display').className = '';
+        }
+
+        requestAnimationFrame(detectPitch);
+    }
+
+    function noteToMidi(noteName) {
+        const noteMap = { 'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11 };
+        const note = noteName.slice(0, -1);
+        const octave = parseInt(noteName.slice(-1));
+        return (octave + 1) * 12 + (noteMap[note] || 0);
+    }
+
+    function freqToMidi(freq) {
+        return Math.round(12 * Math.log2(freq / 8.1758) + 12);
+    }
+
+    function autoCorrelate(buffer, sampleRate) {
+        const SIZE = buffer.length;
+        const MAX_SAMPLES = Math.floor(SIZE / 2);
+        let best_offset = -1;
+        let best_correlation = 0;
+        let rms = 0;
+
+        for (let i = 0; i < SIZE; i++) {
+            const val = buffer[i];
+            rms += val * val;
+        }
+        rms = Math.sqrt(rms / SIZE);
+
+        if (rms < 0.01) return -1;
+
+        let lastCorrelation = 1;
+        for (let offset = 0; offset < MAX_SAMPLES; offset++) {
+            let correlation = 0;
+            for (let i = 0; i < MAX_SAMPLES; i++) {
+                correlation += Math.abs(buffer[i] - buffer[i + offset]);
+            }
+            correlation = 1 - (correlation / MAX_SAMPLES);
+            if (correlation > 0.9) {
+                if (correlation > lastCorrelation) {
+                    let foundGoodCorrelation = false;
+                    if (correlation > best_correlation) {
+                        best_correlation = correlation;
+                        best_offset = offset;
+                        foundGoodCorrelation = true;
+                    }
+                    if (foundGoodCorrelation) {
+                        const shift = this.parabolicInterpolation(buffer, best_offset, MAX_SAMPLES);
+                        return sampleRate / (best_offset + shift);
+                    }
+                }
+            }
+            lastCorrelation = correlation;
+        }
+
+        if (best_correlation > 0.01) {
+            return sampleRate / best_offset;
+        }
+        return -1;
+    }
+
+    parabolicInterpolation(buffer, x, size) {
+        const a = buffer[x];
+        const b = buffer[x + 1];
+        const c = buffer[x + 2];
+        
+        const a1 = -a / 2 + b - c / 2;
+        const a2 = a - b * 2 + c;
+        const a3 = -a / 2 + c / 2;
+
+        if (a2 === 0) return 0;
+        return a3 / (2 * a2);
+    }
 
     function loop() {
         if (!isPlaying) return;
