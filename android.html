@@ -406,32 +406,6 @@
 </div>
 
 <!-- MAIN APP -->
-<div id="app-container">
-    <div id="mini-canvas-wrap">
-        <canvas id="mini-canvas"></canvas>
-    </div>
-
-    <div id="lyrics-section">
-        <div id="key-legend">
-            <div><span class="k-correct">●</span> On pitch</div>
-            <div><span class="k-high">●</span> Too high</div>
-            <div><span class="k-low">●</span> Too low</div>
-        </div>
-        <div id="big-word">♪</div>
-        <div id="note-display">—</div>
-        <div id="status-msg">Ready to play</div>
-    </div>
-
-    <div id="controls-section">
-        <div id="button-row">
-            <button id="play-btn" onclick="window.play()">▶ Play</button>
-            <button id="pause-btn" onclick="window.pause()">⏸ Pause</button>
-            <button id="loop-btn" onclick="window.toggleLoop()">🔁 Loop</button>
-            <button id="mic-btn" onclick="toggleMic()">🎤 OFF</button>
-            <button id="fullscreen-btn" onclick="window.toggleFullscreen()">✕</button>
-        </div>
-    </div>
-</div>
 
 <script type="module">
     // ─────────────────────────────────────────────────────────────────────────────
@@ -1098,6 +1072,33 @@
         ctx = canvas.getContext('2d');
     }
 </script>
+<div id="app-container">
+    <div id="mini-canvas-wrap">
+        <canvas id="mini-canvas"></canvas>
+    </div>
+
+    <div id="lyrics-section">
+        <div id="key-legend">
+            <div><span class="k-correct">●</span> On pitch</div>
+            <div><span class="k-high">●</span> Too high</div>
+            <div><span class="k-low">●</span> Too low</div>
+        </div>
+        <div id="big-word">♪</div>
+        <div id="note-display">—</div>
+        <div id="status-msg">Ready to play</div>
+    </div>
+
+    <div id="controls-section">
+        <div id="button-row">
+            <button id="play-btn" onclick="window.play()">▶ Play</button>
+            <button id="pause-btn" onclick="window.pause()">⏸ Pause</button>
+            <button id="loop-btn" onclick="window.toggleLoop()">🔁 Loop</button>
+            <button id="mic-btn" onclick="toggleMic()">🎤 OFF</button>
+            <button id="fullscreen-btn" onclick="window.toggleFullscreen()">✕</button>
+        </div>
+    </div>
+</div>
+
 
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"88ae93dc204b4258bbe6a74b2de0d960","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
