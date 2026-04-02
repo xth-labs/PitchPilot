@@ -858,8 +858,9 @@
             try {
                 console.log('🔌 Creating MediaStreamAudioSource...');
                 // CRITICAL: Use window.AudioContext not just audioContext
-                const source = new AudioContext().createMediaStreamAudioSource(micStream);
-                source.connect(micProcessor);
+              const source = audioContext.createMediaStreamAudioSource(micStream);
+			micSource = source; // <-- store it so you can disconnect later
+			source.connect(micProcessor);
                 console.log('✓ Mic connected!');
             } catch (e) {
                 console.error('Failed:', e.message);
