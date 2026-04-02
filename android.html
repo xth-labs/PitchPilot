@@ -381,23 +381,16 @@
 </head>
 <body>
 <script>
-	function loadDemoSong() {
-    // Set the demo URL
+window.loadDemoSong = function() {
     const demoUrl = "https://www.youtube.com/watch?v=XHaVmFKnK7w";
-
-    // Fill the input field
     const urlInput = document.getElementById("welcome-url");
     urlInput.value = demoUrl;
-
-    // Simulate clicking the START button
     const startButton = document.querySelector(".welcome-btn[onclick='startPitchPilot()']");
-    if (startButton) {
-        startButton.click();
-    } else {
-        console.warn("START button not found!");
-    }
+    if (startButton) startButton.click();
+    else console.warn("START button not found!");
 }
 </script>
+	
 <!-- WELCOME MODAL -->
 <div id="welcome-modal">
 
