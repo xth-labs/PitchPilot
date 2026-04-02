@@ -375,27 +375,41 @@
 
 <!-- WELCOME MODAL -->
 <div id="welcome-modal">
+
     <div class="welcome-content">
+        <!-- Title -->
         <div class="welcome-title">🎤 PitchPilot</div>
+
+        <!-- Step 1: Input & Instructions -->
         <div id="welcome-step-1">
             <div class="welcome-text">
-                The app that lets you check your pitch when singing against any song you like from YouTube.
-                <br><br>
-                Please enter the YouTube link of the song you wish to cover, then click START. <br> <button class="welcome-btn" 
-        style="background: linear-gradient(135deg, #FF1744, #E91E63); box-shadow: 0 4px 12px rgba(255,23,68,0.5);"
-        onclick="loadDemoSong()">🎵 Click here for Demo</button> 
-				
+                🎵 Test your pitch instantly!<br>
+                Just drop a YouTube link and press <strong>START</strong>.
             </div>
+
+            <!-- Demo button -->
+            <button class="welcome-btn pulse" 
+                    style="background: linear-gradient(135deg, #FF1744, #E91E63); box-shadow: 0 4px 12px rgba(255,23,68,0.5); margin-bottom: 12px;"
+                    onclick="loadDemoSong()">
+                🎵 Click here for Demo
+            </button>
+
+            <!-- YouTube URL input -->
             <input
                 type="text"
                 id="welcome-url"
                 class="welcome-input"
                 placeholder="Paste YouTube URL..."
             />
+
+            <!-- START button -->
             <button class="welcome-btn" onclick="startPitchPilot()">START</button>
+
+            <!-- Error message -->
             <div id="welcome-error"></div>
         </div>
 
+        <!-- Step 2: Progress / Preparing -->
         <div id="welcome-step-2" style="display: none;">
             <div id="status-msg" style="font-size: 16px; margin-bottom: 16px;">⏳ Preparing...</div>
             <div id="progress-bar">
@@ -407,7 +421,6 @@
         </div>
     </div>
 </div>
-
 <!-- MAIN APP -->
 
 <script type="module">
