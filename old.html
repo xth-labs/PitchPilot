@@ -1,7 +1,10 @@
+
+
+
 <!DOCTYPE html>
 <!--
  ╔══════════════════════════════════════════════════════════════════════════════╗
-		                     🎤  YIANNISLICK 1.0  🎤               
+ ║                            🎤  PitchPilot 1.0  🎤                           ║
  ╠══════════════════════════════════════════════════════════════════════════════╣
  ║  A browser-only karaoke pitch trainer that combines:                         ║
  ║    • Spotify's Basic Pitch (ML note detection) — runs fully in-browser       ║
@@ -24,11 +27,21 @@
  ║    youtube-mp36 (RapidAPI)       https://rapidapi.com/ytjar/api/youtube-mp36 ║
  ║                                                                              ║ 
  ║  YOU CAN ALWAYS FIND ME ON GITHUB IF YOU HAVE FURTHER QUESTIONS              ║   
- ║  https://github.com/onlyGod-can-Intimidate-me/YiannisLick                    ║
+ ║  https://github.com/onlyGod-can-Intimidate-me/PitchPilot                     ║
+ ║  coded by John Tsorotes                                                      ║                        ║ 
  ╚══════════════════════════════════════════════════════════════════════════════╝
 -->
 <html lang="en">
 <head>
+	<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-0T5W1C7LM7"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-0T5W1C7LM7');
+</script>
     <meta charset="UTF-8">
     <!--
         maximum-scale=1 + user-scalable=no keeps the layout locked on mobile
@@ -637,15 +650,15 @@ window.submitCaptcha = function() {
 // ── LOGGING — POST to Worker /log ─────────────────────────────
 function logUsage(extra) {
     try {
-        fetch('https://lingering-mouse-8c7c.tsorotes-john.workers.dev/log', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                time: new Date().toISOString(),
-                extra: extra || ''
-            })
+        const params = new URLSearchParams({
+            time : new Date().toISOString(),
+            extra: extra || ''
         });
-    } catch(e) { /* silent — logging never breaks the app */ }
+        fetch('https://script.google.com/macros/s/AKfycbxSMgkEnUUVLXdaMYikjKuXxa-4eIxXlZV4HHonc1zf50suPnGNum6NSo8ysQzSjpTv_A/exec?' + params, {
+            method: 'GET',
+            mode  : 'no-cors'
+        });
+    } catch(e) { /* silent */ }
 }
 
 window.addEventListener('load', () => {
@@ -1645,3 +1658,4 @@ function hideStatus() {
 </script>
 </body>
 </html>
+ 
