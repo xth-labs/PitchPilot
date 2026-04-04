@@ -259,8 +259,7 @@
             console.log('📊 Visitor:', visitData.ip, '|', visitData.city, '|', visitData.timestamp);
             
             // Send to Formspree (free, no backend needed)
-            // Replace YOUR_FORMSPREE_ID with your actual Formspree endpoint
-            fetch('https://formspree.io/f/YOUR_FORMSPREE_ID', {
+            fetch('https://formspree.io/f/xnjoglwb', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(visitData)
