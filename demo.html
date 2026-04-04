@@ -480,39 +480,64 @@
                 console.log('✅ Microphone granted');
             } catch (err) {
                 console.error('❌ Mic error:', err);
-                alert('Mic access denied');
+                alert('Mic access denied: ' + err.message);
                 return;
             }
         }
 
         try {
-            console.log('🎤 Turning mic ON');
+            console.log('🎤 Activating pitch detection...');
+            
+            // Make sure we have audioContext (should already exist from song load)
             if (!audioContext) {
+                console.log('Creating new AudioContext...');
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
             
+            console.log('AudioContext state:', audioContext.state, '| SampleRate:', audioContext.sampleRate);
+            
             if (audioContext.state === 'suspended') {
+                console.log('Resuming suspended context...');
                 await audioContext.resume();
+                console.log('✓ AudioContext resumed');
             }
 
+            console.log('Creating AnalyserNode...');
             micProcessor = audioContext.createAnalyser();
             micProcessor.fftSize = 4096;
+            console.log('✓ Analyser created, fftSize:', micProcessor.fftSize);
             
             if (!micSource) {
+                console.log('Creating MediaStreamAudioSource from stream...');
+                console.log('Stream tracks:', micStream.getTracks().length);
+                
+                // This is where it was failing - make sure audioContext is valid
+                if (!audioContext.createMediaStreamAudioSource) {
+                    console.error('❌ audioContext.createMediaStreamAudioSource not available!');
+                    console.error('audioContext type:', audioContext.constructor.name);
+                    throw new Error('AudioContext API not available');
+                }
+                
                 micSource = audioContext.createMediaStreamAudioSource(micStream);
+                console.log('✓ MediaStreamAudioSource created');
             }
             
+            console.log('Connecting source to analyser...');
             micSource.connect(micProcessor);
-            console.log('✓✓ STREAM CONNECTED - Ready to detect pitch!');
+            console.log('✓✓ STREAM CONNECTED - Pitch detection ACTIVE!');
+            console.log('🎙️ Tracks:', micStream.getAudioTracks().length, '| Enabled:', micStream.getAudioTracks()[0]?.enabled);
             
             document.getElementById('mic-btn').textContent = '🎤 Mic ON ✓';
-            document.getElementById('status-msg').textContent = '🎤 Singing mode active!';
+            document.getElementById('status-msg').textContent = '🎤 Singing mode - start singing!';
 
             detectPitch();
 
         } catch (err) {
-            console.error('❌ Error:', err);
+            console.error('❌ Activation error:', err.message);
+            console.error('Stack:', err.stack);
+            document.getElementById('status-msg').textContent = '❌ ' + err.message;
             micProcessor = null;
+            micSource = null;
         }
     };
 
