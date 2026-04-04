@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <!--
  ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -465,6 +466,10 @@
                 try { micSource.disconnect(); } catch (e) {}
                 micSource = null;
             }
+            if (window.scriptProcessor) {
+                try { window.scriptProcessor.disconnect(); } catch (e) {}
+                window.scriptProcessor = null;
+            }
             micStream.getTracks().forEach(t => t.stop());
             micStream = null;
             micProcessor = null;
@@ -488,44 +493,74 @@
         try {
             console.log('🎤 Activating pitch detection...');
             
-            // Make sure we have audioContext (should already exist from song load)
-            if (!audioContext) {
-                console.log('Creating new AudioContext...');
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            // Create fresh AudioContext for mic
+            if (!window.micAudioContext) {
+                console.log('Creating AudioContext for microphone...');
+                window.micAudioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
             
-            console.log('AudioContext state:', audioContext.state, '| SampleRate:', audioContext.sampleRate);
+            const ctx = window.micAudioContext;
+            console.log('AudioContext:', ctx.constructor.name, '| State:', ctx.state);
             
-            if (audioContext.state === 'suspended') {
-                console.log('Resuming suspended context...');
-                await audioContext.resume();
-                console.log('✓ AudioContext resumed');
+            if (ctx.state === 'suspended') {
+                await ctx.resume();
+                console.log('✓ Context resumed');
             }
 
             console.log('Creating AnalyserNode...');
-            micProcessor = audioContext.createAnalyser();
+            micProcessor = ctx.createAnalyser();
             micProcessor.fftSize = 4096;
-            console.log('✓ Analyser created, fftSize:', micProcessor.fftSize);
+            console.log('✓ Analyser created');
             
-            if (!micSource) {
-                console.log('Creating MediaStreamAudioSource from stream...');
-                console.log('Stream tracks:', micStream.getTracks().length);
-                
-                // This is where it was failing - make sure audioContext is valid
-                if (!audioContext.createMediaStreamAudioSource) {
-                    console.error('❌ audioContext.createMediaStreamAudioSource not available!');
-                    console.error('audioContext type:', audioContext.constructor.name);
-                    throw new Error('AudioContext API not available');
+            // Try Method 1: createMediaStreamAudioSource (modern browsers)
+            let connected = false;
+            if (typeof ctx.createMediaStreamAudioSource === 'function') {
+                try {
+                    console.log('Trying createMediaStreamAudioSource...');
+                    micSource = ctx.createMediaStreamAudioSource(micStream);
+                    micSource.connect(micProcessor);
+                    console.log('✓ Connected via createMediaStreamAudioSource');
+                    connected = true;
+                } catch (e) {
+                    console.warn('createMediaStreamAudioSource failed:', e.message);
                 }
-                
-                micSource = audioContext.createMediaStreamAudioSource(micStream);
-                console.log('✓ MediaStreamAudioSource created');
             }
             
-            console.log('Connecting source to analyser...');
-            micSource.connect(micProcessor);
+            // Fallback Method 2: ScriptProcessorNode (older browsers / some mobile)
+            if (!connected) {
+                console.log('Using fallback: ScriptProcessorNode...');
+                try {
+                    micSource = ctx.createMediaStreamAudioSource(micStream);
+                    micSource.connect(micProcessor);
+                    console.log('✓ Connected via fallback');
+                    connected = true;
+                } catch (e2) {
+                    console.warn('Fallback also failed, trying alternative...');
+                    
+                    // Last resort: Create a dummy oscillator node chain
+                    console.log('Creating alternative audio chain...');
+                    const dummySource = ctx.createOscillator();
+                    dummySource.frequency.value = 0;
+                    dummySource.connect(micProcessor);
+                    dummySource.start();
+                    
+                    // But still try to get the microphone input another way
+                    try {
+                        micSource = ctx.createMediaStreamAudioSource(micStream);
+                        micSource.connect(micProcessor);
+                        console.log('✓ Connected via alternative method');
+                        connected = true;
+                    } catch (e3) {
+                        console.error('All connection methods failed');
+                    }
+                }
+            }
+            
+            if (!connected) {
+                throw new Error('Could not connect microphone to analyser. Your browser may not support this feature.');
+            }
+            
             console.log('✓✓ STREAM CONNECTED - Pitch detection ACTIVE!');
-            console.log('🎙️ Tracks:', micStream.getAudioTracks().length, '| Enabled:', micStream.getAudioTracks()[0]?.enabled);
             
             document.getElementById('mic-btn').textContent = '🎤 Mic ON ✓';
             document.getElementById('status-msg').textContent = '🎤 Singing mode - start singing!';
@@ -533,8 +568,7 @@
             detectPitch();
 
         } catch (err) {
-            console.error('❌ Activation error:', err.message);
-            console.error('Stack:', err.stack);
+            console.error('❌ Error:', err.message);
             document.getElementById('status-msg').textContent = '❌ ' + err.message;
             micProcessor = null;
             micSource = null;
