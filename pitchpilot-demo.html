@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<!--
+ ╔══════════════════════════════════════════════════════════════════════════════╗
+ │                     🎤 PitchPilot DEMO - Reddit Ready 🎤                     │
+ ╠══════════════════════════════════════════════════════════════════════════════╣
+ │  Quick 30-second demo with preloaded song and notes                           │
+ │  No forms, no waiting, no friction - just sing!                               │
+ │                                                                               │
+ │  User Flow:                                                                   │
+ │  1. Page loads → auto-loads song (2 sec delay for UX)                        │
+ │  2. Song auto-plays                                                           │
+ │  3. User clicks Mic → grants permission → pitch detection starts             │
+ │  4. Lyrics appear with color feedback (green=correct, yellow=high, red=low) │
+ │  5. 30 seconds of karaoke testing                                             │
+ ╚══════════════════════════════════════════════════════════════════════════════╝
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>🎤 PitchPilot Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── LOADING SCREEN ────────────────────────────────────────────────────── */
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        #loading-screen.hidden {
+            display: none;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #E91E63;
+            border-top: 4px solid transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 18px;
+            color: #E91E63;
+            letter-spacing: 2px;
+        }
+
+        /* ── MAIN CONTAINER ────────────────────────────────────────────────────── */
+        #app-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 8px;
+            gap: 8px;
+            overflow: hidden;
+        }
+
+        /* LANDSCAPE MODE */
+        @media (orientation: landscape) {
+            #app-container {
+                flex-direction: column;
+            }
+
+            #mini-canvas-wrap {
+                flex: 0 0 12%;
+            }
+
+            #lyrics-section {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            #controls-section {
+                flex: 0 0 18%;
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 6px;
+                padding: 6px;
+            }
+
+            #controls-section button {
+                padding: 8px 4px !important;
+                font-size: 12px !important;
+                min-height: 45px;
+            }
+        }
+
+        /* ── PITCH CANVAS ────────────────────────────────────────────────────── */
+        #mini-canvas-wrap {
+            border: 1px solid #1a1a1a;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #080808;
+            position: relative;
+        }
+
+        #mini-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ── LYRICS SECTION ────────────────────────────────────────────────────── */
+        #lyrics-section {
+            background: #0f0f0f;
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            overflow: hidden;
+        }
+
+        #big-word {
+            font-size: clamp(32px, 15vw, 72px);
+            font-weight: bold;
+            margin: 16px 0;
+            transition: all 0.1s ease;
+            letter-spacing: 2px;
+            color: #fff;
+        }
+
+        #big-word.correct {
+            color: #4CAF50;
+            transform: scale(1.1);
+        }
+
+        #big-word.too-high {
+            color: #c8e600;
+            transform: translateY(-4px);
+        }
+
+        #big-word.too-low {
+            color: #f44336;
+            transform: translateY(4px);
+        }
+
+        #note-display {
+            font-size: clamp(16px, 8vw, 32px);
+            font-weight: bold;
+            letter-spacing: 4px;
+            color: #666;
+            transition: color 0.08s ease;
+        }
+
+        #note-display.correct {
+            color: #4CAF50;
+        }
+
+        #note-display.too-high {
+            color: #c8e600;
+        }
+
+        #note-display.too-low {
+            color: #f44336;
+        }
+
+        #status-msg {
+            font-size: 12px;
+            color: #999;
+            text-align: center;
+            min-height: 20px;
+        }
+
+        /* ── CONTROLS ────────────────────────────────────────────────────────── */
+        #controls-section {
+            background: #0a0a0a;
+            border-radius: 8px;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        button {
+            background: #E91E63;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 12px 16px;
+            font-size: 18px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        button:active {
+            transform: scale(0.96);
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        #progress-fill {
+            height: 4px;
+            background: linear-gradient(90deg, #E91E63, #FF1744);
+            width: 0%;
+            transition: width 0.1s linear;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="loading-screen">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Loading Demo...</div>
+</div>
+
+<div id="app-container" style="display: none;">
+    <div id="mini-canvas-wrap">
+        <canvas id="mini-canvas"></canvas>
+    </div>
+
+    <div id="lyrics-section">
+        <div id="big-word">🎵</div>
+        <div id="note-display">—</div>
+        <div id="status-msg">Ready</div>
+    </div>
+
+    <div id="controls-section">
+        <button id="play-btn" onclick="window.play()" style="background: #4CAF50;">▶ Play</button>
+        <button id="mic-btn" onclick="toggleMic()">🎤 Tap for Mic</button>
+    </div>
+    <div id="progress-fill"></div>
+</div>
+
+<script>
+    // ─────────────────────────────────────────────────────────────────────────────
+    // PRELOADED DATA
+    // ─────────────────────────────────────────────────────────────────────────────
+    const DEMO_SONG_URL = 'https://xthereon.com/PitchPilot/imagine.mp3';
+    const DEMO_PILLS = [
+        { word: "Imagine", note: "A4", timeMs: 1200, durMs: 600 },
+        { word: "there's", note: "G4", timeMs: 1800, durMs: 1000 },
+        { word: "no", note: "G4", timeMs: 2800, durMs: 400 },
+        { word: "heaven.", note: "A4", timeMs: 3280, durMs: 720 },
+        { word: "It's", note: "C4", timeMs: 7680, durMs: 320 },
+        { word: "easy", note: "F4", timeMs: 8000, durMs: 320 },
+        { word: "if", note: "G4", timeMs: 8400, durMs: 400 },
+        { word: "you", note: "B4", timeMs: 9200, durMs: 400 },
+        { word: "try.", note: "A4", timeMs: 9840, durMs: 400 },
+        { word: "No hell", note: "C4", timeMs: 14560, durMs: 880 },
+        { word: "below", note: "A4", timeMs: 16240, durMs: 400 },
+        { word: "us,", note: "F4", timeMs: 16880, durMs: 400 },
+        { word: "Above", note: "F4", timeMs: 21840, durMs: 440 },
+        { word: "us", note: "B4", timeMs: 22280, durMs: 360 },
+        { word: "only", note: "B4", timeMs: 22880, durMs: 400 },
+        { word: "God.", note: "B4", timeMs: 23440, durMs: 640 }
+    ];
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // GLOBAL STATE
+    // ─────────────────────────────────────────────────────────────────────────────
+    let audioContext, audioBuffer, pills = DEMO_PILLS, isPlaying = false;
+    let playbackStart = 0, rafId = null, canvas = null, ctx = null;
+    let micStream, micProcessor, micSource, currentMicPitch = -1, currentExpected = null;
+    let pitchDebugCounter = 0;
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // INIT - AUTO-LOAD SONG
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.onload = async function() {
+        console.log('🎤 PitchPilot Demo Loading...');
+        
+        setTimeout(async () => {
+            try {
+                console.log('📥 Fetching song...');
+                const response = await fetch(DEMO_SONG_URL);
+                const arrayBuffer = await response.arrayBuffer();
+                
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                console.log('✅ Song loaded: ' + audioBuffer.duration.toFixed(2) + ' seconds');
+                
+                document.getElementById('loading-screen').classList.add('hidden');
+                document.getElementById('app-container').style.display = 'flex';
+                
+                initCanvas();
+                document.getElementById('play-btn').disabled = false;
+                document.getElementById('status-msg').textContent = 'Ready to play - tap Play!';
+                
+                // Auto-play after UI shows
+                setTimeout(() => {
+                    window.play();
+                }, 500);
+                
+            } catch (err) {
+                console.error('❌ Load error:', err);
+                document.getElementById('loading-screen').innerHTML = '<div style="color: #f44336; font-size: 18px;">❌ Failed to load song</div>';
+            }
+        }, 1000);
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // PLAYBACK CONTROL
+    // ─────────────────────────────────────────────────────────────────────────────
+    window.play = function() {
+        if (!audioBuffer) return;
+        
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioContext.state === 'suspended') {
+            audioContext.resume().then(() => startPlayback());
+        } else {
+            startPlayback();
+        }
+    };
+
+    function startPlayback() {
+        if (window.currentSource) {
+            try { window.currentSource.stop(); } catch (e) {}
+        }
+
+        requestMicPermission();
+
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+        source.start(0);
+
+        window.currentSource = source;
+        isPlaying = true;
+        playbackStart = audioContext.currentTime;
+        document.getElementById('play-btn').disabled = true;
+
+        console.log('✅ Playback started');
+        loop();
+    }
+
+    function stop() {
+        if (!isPlaying) return;
+        
+        isPlaying = false;
+        
+        if (window.currentSource) {
+            try { window.currentSource.stop(); } catch (e) {}
+        }
+        
+        if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+        }
+        
+        document.getElementById('play-btn').disabled = false;
+        document.getElementById('big-word').textContent = '🎵';
+        document.getElementById('note-display').textContent = '—';
+        document.getElementById('status-msg').textContent = 'Done! Try again?';
+        document.getElementById('progress-fill').style.width = '0%';
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // MIC & PITCH DETECTION
+    // ─────────────────────────────────────────────────────────────────────────────
+    async function requestMicPermission() {
+        try {
+            if (micStream) return;
+            
+            console.log('🎤 Requesting mic permission...');
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log('✅ Mic permission granted');
+            document.getElementById('mic-btn').disabled = false;
+        } catch (err) {
+            console.log('ℹ️ Mic permission skipped:', err.message);
+            document.getElementById('mic-btn').disabled = true;
+        }
+    }
+
+    window.toggleMic = async function() {
+        if (micProcessor) {
+            // Turn OFF
+            console.log('🎤 Turning mic OFF');
+            if (micSource) {
+                try { micSource.disconnect(); } catch (e) {}
+                micSource = null;
+            }
+            micStream.getTracks().forEach(t => t.stop());
+            micStream = null;
+            micProcessor = null;
+            document.getElementById('mic-btn').textContent = '🎤 Tap for Mic';
+            document.getElementById('status-msg').textContent = 'Mic off';
+            return;
+        }
+
+        if (!micStream) {
+            try {
+                console.log('🎤 Requesting microphone...');
+                micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                console.log('✅ Microphone granted');
+            } catch (err) {
+                console.error('❌ Mic error:', err);
+                alert('Mic access denied');
+                return;
+            }
+        }
+
+        try {
+            console.log('🎤 Turning mic ON');
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+
+            micProcessor = audioContext.createAnalyser();
+            micProcessor.fftSize = 4096;
+            
+            if (!micSource) {
+                micSource = audioContext.createMediaStreamAudioSource(micStream);
+            }
+            
+            micSource.connect(micProcessor);
+            console.log('✓✓ STREAM CONNECTED - Ready to detect pitch!');
+            
+            document.getElementById('mic-btn').textContent = '🎤 Mic ON ✓';
+            document.getElementById('status-msg').textContent = '🎤 Singing mode active!';
+
+            detectPitch();
+
+        } catch (err) {
+            console.error('❌ Error:', err);
+            micProcessor = null;
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // PITCH DETECTION
+    // ─────────────────────────────────────────────────────────────────────────────
+    let pitchDebugCounter = 0;
+    
+    function detectPitch() {
+        if (!micProcessor || !isPlaying) {
+            requestAnimationFrame(detectPitch);
+            return;
+        }
+
+        const dataArray = new Uint8Array(micProcessor.frequencyBinCount);
+        micProcessor.getByteTimeDomainData(dataArray);
+        
+        let rms = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+            const normalized = (dataArray[i] - 128) / 128.0;
+            rms += normalized * normalized;
+        }
+        rms = Math.sqrt(rms / dataArray.length);
+        
+        const floatArray = new Float32Array(dataArray.length);
+        for (let i = 0; i < dataArray.length; i++) {
+            floatArray[i] = (dataArray[i] - 128) / 128.0;
+        }
+
+        const pitch = autoCorrelate(floatArray, audioContext.sampleRate);
+        currentMicPitch = pitch;
+
+        pitchDebugCounter++;
+        if (pitchDebugCounter % 30 === 0) {
+            console.log('🎤 AUDIO: RMS=' + rms.toFixed(4) + ' | Pitch=' + (pitch > 0 ? pitch.toFixed(1) + ' Hz' : 'not detected'));
+        }
+
+        if (currentExpected && pitch > 0) {
+            const expectedMidi = noteToMidi(currentExpected);
+            const sungMidi = freqToMidi(pitch);
+            const diff = sungMidi - expectedMidi;
+
+            if (Math.abs(diff) <= 1) {
+                document.getElementById('big-word').className = 'correct';
+                document.getElementById('note-display').className = 'correct';
+            } else if (diff > 1) {
+                document.getElementById('big-word').className = 'too-high';
+                document.getElementById('note-display').className = 'too-high';
+            } else {
+                document.getElementById('big-word').className = 'too-low';
+                document.getElementById('note-display').className = 'too-low';
+            }
+        } else {
+            document.getElementById('big-word').className = '';
+            document.getElementById('note-display').className = '';
+        }
+
+        requestAnimationFrame(detectPitch);
+    }
+
+    function noteToMidi(noteName) {
+        const noteMap = { 'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11 };
+        const note = noteName.slice(0, -1);
+        const octave = parseInt(noteName.slice(-1));
+        return (octave + 1) * 12 + (noteMap[note] || 0);
+    }
+
+    function freqToMidi(freq) {
+        return Math.round(12 * Math.log2(freq / 8.1758) + 12);
+    }
+
+    function autoCorrelate(buffer, sampleRate) {
+        const SIZE = buffer.length;
+        const MAX_SAMPLES = Math.floor(SIZE / 2);
+        let best_offset = -1;
+        let best_correlation = 0;
+        let rms = 0;
+
+        for (let i = 0; i < SIZE; i++) {
+            const val = buffer[i];
+            rms += val * val;
+        }
+        rms = Math.sqrt(rms / SIZE);
+
+        if (rms < 0.01) return -1;
+
+        let lastCorrelation = 1;
+        for (let offset = 0; offset < MAX_SAMPLES; offset++) {
+            let correlation = 0;
+            for (let i = 0; i < MAX_SAMPLES; i++) {
+                correlation += Math.abs(buffer[i] - buffer[i + offset]);
+            }
+            correlation = 1 - (correlation / MAX_SAMPLES);
+            if (correlation > 0.9) {
+                if (correlation > lastCorrelation) {
+                    let foundGoodCorrelation = false;
+                    if (correlation > best_correlation) {
+                        best_correlation = correlation;
+                        best_offset = offset;
+                        foundGoodCorrelation = true;
+                    }
+                    if (foundGoodCorrelation) {
+                        const shift = parabolicInterpolation(buffer, best_offset, MAX_SAMPLES);
+                        return sampleRate / (best_offset + shift);
+                    }
+                }
+            }
+            lastCorrelation = correlation;
+        }
+
+        if (best_correlation > 0.01) {
+            return sampleRate / best_offset;
+        }
+        return -1;
+    }
+
+    function parabolicInterpolation(buffer, x, size) {
+        const a = buffer[x];
+        const b = buffer[x + 1];
+        const c = buffer[x + 2];
+        
+        const a1 = -a / 2 + b - c / 2;
+        const a2 = a - b * 2 + c;
+        const a3 = -a / 2 + c / 2;
+
+        if (a2 === 0) return 0;
+        return a3 / (2 * a2);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ANIMATION LOOP
+    // ─────────────────────────────────────────────────────────────────────────────
+    function loop() {
+        if (!isPlaying) return;
+
+        const elapsed = (audioContext.currentTime - playbackStart) * 1000;
+        const songDuration = audioBuffer.duration * 1000;
+        const progress = Math.min(100, (elapsed / songDuration) * 100);
+        document.getElementById('progress-fill').style.width = progress + '%';
+
+        let currentWord = null;
+        for (let p of pills) {
+            if (elapsed >= p.timeMs && elapsed <= p.timeMs + p.durMs) {
+                currentWord = p;
+                break;
+            }
+        }
+
+        if (currentWord) {
+            currentExpected = currentWord.note;
+            document.getElementById('big-word').textContent = currentWord.word;
+            document.getElementById('note-display').textContent = currentWord.note;
+        } else {
+            document.getElementById('big-word').textContent = '🎵';
+            document.getElementById('note-display').textContent = '—';
+        }
+
+        renderCanvas(elapsed);
+
+        if (elapsed > songDuration) {
+            stop();
+            return;
+        }
+
+        rafId = requestAnimationFrame(loop);
+    }
+
+    function renderCanvas(elapsed) {
+        if (!canvas) return;
+
+        const W = canvas.width;
+        const H = canvas.height;
+        const hitX = W * 0.15;
+        const ppm = (W - hitX) / 5000;
+
+        ctx.fillStyle = '#080808';
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.strokeStyle = '#1a1a1a';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 3; i++) {
+            const y = (H / 3) * i;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(W, y);
+            ctx.stroke();
+        }
+
+        const colors = ['#f44336', '#FF9800', '#c8e600', '#4CAF50', '#00BCD4'];
+        
+        pills.forEach((p, idx) => {
+            const timeUntil = p.timeMs - elapsed;
+            const x = hitX + timeUntil * ppm;
+            const pw = Math.max(p.durMs * ppm - 2, 4);
+            const ph = H - 4;
+            const py = 2;
+
+            if (x > W + pw || x + pw < 0) return;
+
+            const colorIdx = idx % colors.length;
+            ctx.fillStyle = colors[colorIdx];
+            ctx.fillRect(Math.max(0, x), py, pw, ph);
+        });
+
+        ctx.strokeStyle = '#E91E63';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(hitX, 0);
+        ctx.lineTo(hitX, H);
+        ctx.stroke();
+    }
+
+    function initCanvas() {
+        canvas = document.getElementById('mini-canvas');
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+        ctx = canvas.getContext('2d');
+    }
+
+    window.addEventListener('resize', () => {
+        if (canvas) {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        }
+    });
+</script>
+
+</body>
+</html>
