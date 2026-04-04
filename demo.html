@@ -492,89 +492,35 @@
         try {
             console.log('🎤 Activating pitch detection...');
             
-            // Create fresh AudioContext for mic
-            if (!window.micAudioContext) {
-                console.log('Creating AudioContext for microphone...');
-                window.micAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            // Make sure we have the audioContext from song playback
+            if (!audioContext) {
+                console.log('Creating AudioContext...');
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
             
-            const ctx = window.micAudioContext;
-            console.log('AudioContext:', ctx.constructor.name, '| State:', ctx.state);
+            console.log('AudioContext state:', audioContext.state, '| Type:', audioContext.constructor.name);
             
-            if (ctx.state === 'suspended') {
-                await ctx.resume();
-                console.log('✓ Context resumed');
+            if (audioContext.state === 'suspended') {
+                console.log('Resuming suspended AudioContext...');
+                await audioContext.resume();
             }
 
             console.log('Creating AnalyserNode...');
-            micProcessor = ctx.createAnalyser();
+            micProcessor = audioContext.createAnalyser();
             micProcessor.fftSize = 4096;
             console.log('✓ Analyser created');
             
-            // Try Method 1: createMediaStreamSource (Android) or createMediaStreamAudioSource (modern browsers)
-            let connected = false;
+            // Use the working pattern that supports all browsers
+            console.log('Connecting microphone stream...');
+            const createSourceFn = audioContext.createMediaStreamSource || audioContext.createMediaStreamAudioSource;
             
-            // Try Android method first
-            if (typeof ctx.createMediaStreamSource === 'function') {
-                try {
-                    console.log('Trying createMediaStreamSource (Android)...');
-                    micSource = ctx.createMediaStreamSource(micStream);
-                    micSource.connect(micProcessor);
-                    console.log('✓ Connected via createMediaStreamSource');
-                    connected = true;
-                } catch (e) {
-                    console.warn('createMediaStreamSource failed:', e.message);
-                }
+            if (!createSourceFn) {
+                throw new Error('AudioContext does not support createMediaStreamSource or createMediaStreamAudioSource');
             }
             
-            // Try modern method
-            if (!connected && typeof ctx.createMediaStreamAudioSource === 'function') {
-                try {
-                    console.log('Trying createMediaStreamAudioSource...');
-                    micSource = ctx.createMediaStreamAudioSource(micStream);
-                    micSource.connect(micProcessor);
-                    console.log('✓ Connected via createMediaStreamAudioSource');
-                    connected = true;
-                } catch (e) {
-                    console.warn('createMediaStreamAudioSource failed:', e.message);
-                }
-            }
-            
-            // Fallback Method 2: ScriptProcessorNode (older browsers / some mobile)
-            if (!connected) {
-                console.log('Using fallback: ScriptProcessorNode...');
-                try {
-                    micSource = ctx.createMediaStreamAudioSource(micStream);
-                    micSource.connect(micProcessor);
-                    console.log('✓ Connected via fallback');
-                    connected = true;
-                } catch (e2) {
-                    console.warn('Fallback also failed, trying alternative...');
-                    
-                    // Last resort: Create a dummy oscillator node chain
-                    console.log('Creating alternative audio chain...');
-                    const dummySource = ctx.createOscillator();
-                    dummySource.frequency.value = 0;
-                    dummySource.connect(micProcessor);
-                    dummySource.start();
-                    
-                    // But still try to get the microphone input another way
-                    try {
-                        micSource = ctx.createMediaStreamAudioSource(micStream);
-                        micSource.connect(micProcessor);
-                        console.log('✓ Connected via alternative method');
-                        connected = true;
-                    } catch (e3) {
-                        console.error('All connection methods failed');
-                    }
-                }
-            }
-            
-            if (!connected) {
-                throw new Error('Could not connect microphone to analyser. Your browser may not support this feature.');
-            }
-            
-            console.log('✓✓ STREAM CONNECTED - Pitch detection ACTIVE!');
+            micSource = createSourceFn.call(audioContext, micStream);
+            micSource.connect(micProcessor);
+            console.log('✓✓ Mic connected!');
             
             document.getElementById('mic-btn').textContent = '🎤 Mic ON ✓';
             document.getElementById('status-msg').textContent = '🎤 Singing mode - start singing!';
