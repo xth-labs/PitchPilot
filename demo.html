@@ -742,6 +742,17 @@
             const sungMidi = freqToMidi(pitch);
             const diff = sungMidi - expectedMidi;
 
+            // Debug: Log every frame to console
+            pitchDebugCounter++;
+            if (pitchDebugCounter % 10 === 0) {
+                const sungNote = midiToNote(sungMidi);
+                console.log(`Expected: ${currentExpected} (MIDI: ${expectedMidi}) | You: ${sungNote} (${pitch.toFixed(1)}Hz, MIDI: ${sungMidi}) | Diff: ${diff}`);
+            }
+
+            // Update display with heard note
+            const sungNote = midiToNote(sungMidi);
+            document.getElementById('note-display').textContent = `${currentExpected} → ${sungNote}`;
+
             if (Math.abs(diff) <= 1) {
                 document.getElementById('big-word').className = 'correct';
                 document.getElementById('note-display').className = 'correct';
@@ -758,6 +769,13 @@
         }
 
         requestAnimationFrame(detectPitch);
+    }
+
+    function midiToNote(midi) {
+        const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const octave = Math.floor((midi - 12) / 12);
+        const noteIndex = midi % 12;
+        return notes[noteIndex] + octave;
     }
 
     function noteToMidi(noteName) {
