@@ -786,7 +786,8 @@
     }
 
     function freqToMidi(freq) {
-        return Math.round(12 * Math.log2(freq / 8.1758) + 12);
+        // Standard formula: A4 (440Hz) = MIDI 69
+        return Math.round(69 + 12 * Math.log2(freq / 440));
     }
 
     function autoCorrelate(buffer, sampleRate) {
