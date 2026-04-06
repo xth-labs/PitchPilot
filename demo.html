@@ -414,6 +414,10 @@
     let micStream, micProcessor, micSource, currentMicPitch = -1, currentExpected = null;
     let pitchDebugCounter = 0;
     let currentWordIndex = -1;
+    
+    // Pitch smoothing buffer (moving average)
+    let pitchHistory = [];
+    const PITCH_SMOOTH_WINDOW = 6;  // Smooth over last 6 frames
 
     // ─────────────────────────────────────────────────────────────────────────────
     // SCORECARD SYSTEM
@@ -604,6 +608,7 @@
             try { window.currentSource.stop(); } catch (e) {}
         }
 
+        pitchHistory = [];  // Reset pitch smoothing buffer
         requestMicPermission();
 
         const source = audioContext.createBufferSource();
@@ -718,6 +723,30 @@
     // ─────────────────────────────────────────────────────────────────────────────
     // PITCH DETECTION
     // ─────────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────────
+    // PITCH SMOOTHING (to reduce flickering)
+    // ─────────────────────────────────────────────────────────────────────────────
+    
+    function smoothPitch(rawPitch) {
+        // Only add valid pitches to history
+        if (rawPitch > 0) {
+            pitchHistory.push(rawPitch);
+        }
+        
+        // Keep history size limited
+        if (pitchHistory.length > PITCH_SMOOTH_WINDOW) {
+            pitchHistory.shift();
+        }
+        
+        // Return average of history, or -1 if no valid pitches
+        if (pitchHistory.length === 0) {
+            return -1;
+        }
+        
+        const sum = pitchHistory.reduce((a, b) => a + b, 0);
+        return sum / pitchHistory.length;
+    }
+
     function detectPitch() {
         if (!micProcessor || !isPlaying) {
             requestAnimationFrame(detectPitch);
@@ -732,7 +761,8 @@
             floatArray[i] = (dataArray[i] - 128) / 128.0;
         }
 
-        const pitch = autoCorrelate(floatArray, audioContext.sampleRate);
+        const rawPitch = autoCorrelate(floatArray, audioContext.sampleRate);
+        const pitch = smoothPitch(rawPitch);  // Apply smoothing!
         currentMicPitch = pitch;
 
         if (currentExpected && pitch > 0 && currentWordIndex >= 0) {
