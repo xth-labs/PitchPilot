@@ -1,24 +1,9 @@
 <!DOCTYPE html>
-<!--
- ╔══════════════════════════════════════════════════════════════════════════════╗
- │                     🎤 PitchPilot DEMO - Reddit Ready 🎤                     │
- ╠══════════════════════════════════════════════════════════════════════════════╣
- │  Quick 30-second demo with preloaded song and notes                           │
- │  No forms, no waiting, no friction - just sing!                               │
- │                                                                               │
- │  User Flow:                                                                   │
- │  1. Page loads → auto-loads song (2 sec delay for UX)                        │
- │  2. Song auto-plays                                                           │
- │  3. User clicks Mic → grants permission → pitch detection starts             │
- │  4. Lyrics appear with color feedback (green=correct, yellow=high, red=low) │
- │  5. 30 seconds of karaoke testing                                             │
- ╚══════════════════════════════════════════════════════════════════════════════╝
--->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>🎤 PitchPilot Demo</title>
+    <title>🎤 PitchPilot Demo + Coaching</title>
     <style>
         * {
             margin: 0;
@@ -37,47 +22,6 @@
             flex-direction: column;
         }
 
-        /* ── LOADING SCREEN ────────────────────────────────────────────────────── */
-        #loading-screen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.9);
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        #loading-screen.hidden {
-            display: none;
-        }
-
-        .loading-spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid #E91E63;
-            border-top: 4px solid transparent;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .loading-text {
-            font-size: 18px;
-            color: #E91E63;
-            letter-spacing: 2px;
-        }
-
-        /* ── MAIN CONTAINER ────────────────────────────────────────────────────── */
         #app-container {
             flex: 1;
             display: flex;
@@ -87,23 +31,16 @@
             overflow: hidden;
         }
 
-        /* LANDSCAPE MODE */
         @media (orientation: landscape) {
-            #app-container {
-                flex-direction: column;
-            }
-
             #mini-canvas-wrap {
                 flex: 0 0 12%;
             }
-
             #lyrics-section {
                 flex: 1;
                 display: flex;
                 align-items: center;
                 justify-content: center;
             }
-
             #controls-section {
                 flex: 0 0 18%;
                 display: grid;
@@ -111,7 +48,6 @@
                 gap: 6px;
                 padding: 6px;
             }
-
             #controls-section button {
                 padding: 8px 4px !important;
                 font-size: 12px !important;
@@ -119,13 +55,11 @@
             }
         }
 
-        /* ── PITCH CANVAS ────────────────────────────────────────────────────── */
         #mini-canvas-wrap {
             border: 1px solid #1a1a1a;
             border-radius: 8px;
             overflow: hidden;
             background: #080808;
-            position: relative;
         }
 
         #mini-canvas {
@@ -134,7 +68,6 @@
             height: 100%;
         }
 
-        /* ── LYRICS SECTION ────────────────────────────────────────────────────── */
         #lyrics-section {
             background: #0f0f0f;
             border-radius: 8px;
@@ -144,16 +77,13 @@
             align-items: center;
             justify-content: center;
             gap: 8px;
-            overflow: hidden;
         }
 
         #big-word {
             font-size: clamp(32px, 15vw, 72px);
             font-weight: bold;
-            margin: 16px 0;
             transition: all 0.1s ease;
             letter-spacing: 2px;
-            color: #fff;
         }
 
         #big-word.correct {
@@ -198,7 +128,6 @@
             min-height: 20px;
         }
 
-        /* ── CONTROLS ────────────────────────────────────────────────────────── */
         #controls-section {
             background: #0a0a0a;
             border-radius: 8px;
@@ -237,53 +166,169 @@
             transition: width 0.1s linear;
             border-radius: 2px;
         }
-    </style>
-<script>
-(function() {
-    const trackVisit = async () => {
-        try {
-            // Get visitor's IP and location
-            const ipRes = await fetch('https://ipapi.co/json/');
-            const ipData = await ipRes.json();
-            
-            const visitData = {
-                timestamp: new Date().toISOString(),
-                ip: ipData.ip,
-                country: ipData.country_name || 'Unknown',
-                city: ipData.city || 'Unknown',
-                page: 'PitchPilot Demo',
-                referrer: document.referrer || 'direct'
-            };
-            
-            // Log to console
-            console.log('📊 Visitor:', visitData.ip, '|', visitData.city, '|', visitData.timestamp);
-            
-            // Send to Formspree (free, no backend needed)
-            fetch('https://formspree.io/f/xnjoglwb', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(visitData)
-            }).catch(() => {}); // Fail silently
-            
-        } catch (err) {
-            console.log('Tracker: ' + err.message);
+
+        /* ── SCORECARD MODAL ────────────────────────────────────────────────── */
+        #scorecard-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            overflow-y: auto;
+            padding: 20px;
         }
-    };
-    
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', trackVisit);
-    } else {
-        trackVisit();
-    }
-})();
-</script>
 
-<div id="loading-screen">
-    <div class="loading-spinner"></div>
-    <div class="loading-text">Loading Demo...</div>
-</div>
+        #scorecard-modal.show {
+            display: flex;
+        }
 
-<div id="app-container" style="display: none;">
+        .scorecard-content {
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+            border: 2px solid #E91E63;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 90vw;
+            width: 100%;
+            max-height: 85vh;
+            overflow-y: auto;
+        }
+
+        .scorecard-title {
+            font-size: 28px;
+            font-weight: bold;
+            color: #E91E63;
+            text-align: center;
+            margin-bottom: 20px;
+            letter-spacing: 2px;
+        }
+
+        .scorecard-score {
+            font-size: 48px;
+            font-weight: bold;
+            color: #4CAF50;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .scorecard-section {
+            margin: 20px 0;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            border-left: 4px solid #E91E63;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #E91E63;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .section-content {
+            font-size: 13px;
+            line-height: 1.6;
+            color: #ccc;
+        }
+
+        .word-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .word-tag {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+
+        .word-tag.correct {
+            background: #4CAF50;
+            color: #000;
+        }
+
+        .word-tag.high {
+            background: #c8e600;
+            color: #000;
+        }
+
+        .word-tag.low {
+            background: #f44336;
+            color: #fff;
+        }
+
+        .word-tag.missed {
+            background: #ff6b6b;
+            color: #fff;
+        }
+
+        .coaching-box {
+            background: rgba(76, 175, 80, 0.1);
+            border: 2px solid #4CAF50;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 20px;
+        }
+
+        .coaching-title {
+            color: #4CAF50;
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .coaching-tips {
+            list-style: none;
+            padding: 0;
+        }
+
+        .coaching-tips li {
+            color: #ccc;
+            margin: 8px 0;
+            padding-left: 20px;
+            position: relative;
+            font-size: 13px;
+        }
+
+        .coaching-tips li:before {
+            content: "💡";
+            position: absolute;
+            left: 0;
+        }
+
+        .scorecard-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .scorecard-buttons button {
+            padding: 14px !important;
+            font-size: 16px !important;
+            margin: 0 !important;
+        }
+
+        .scorecard-buttons button.secondary {
+            background: #666 !important;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
     <div id="mini-canvas-wrap">
         <canvas id="mini-canvas"></canvas>
     </div>
@@ -299,6 +344,42 @@
         <button id="mic-btn" onclick="toggleMic()">🎤 Tap for Mic</button>
     </div>
     <div id="progress-fill"></div>
+</div>
+
+<!-- SCORECARD MODAL -->
+<div id="scorecard-modal">
+    <div class="scorecard-content">
+        <div class="scorecard-title">🎵 Performance Scorecard</div>
+        
+        <div class="scorecard-score" id="scorecard-accuracy">0%</div>
+        <div style="text-align: center; color: #999; font-size: 14px; margin-bottom: 20px;" id="scorecard-summary">
+            0 / 0 words correct
+        </div>
+
+        <!-- Perfect Words -->
+        <div class="scorecard-section" id="perfect-section" style="display: none;">
+            <div class="section-title">✅ Nailed It!</div>
+            <div class="word-list" id="perfect-words"></div>
+        </div>
+
+        <!-- Issues -->
+        <div class="scorecard-section" id="issues-section" style="display: none;">
+            <div class="section-title">⚠️ Areas to Work On</div>
+            <div id="issues-content"></div>
+        </div>
+
+        <!-- Coaching Tips -->
+        <div class="coaching-box" id="coaching-box" style="display: none;">
+            <div class="coaching-title">💡 Personalized Coaching Tips</div>
+            <ul class="coaching-tips" id="coaching-tips"></ul>
+        </div>
+
+        <!-- Buttons -->
+        <div class="scorecard-buttons">
+            <button id="try-again-btn" onclick="closeScorecard(); window.play();">🎤 Try Again</button>
+            <button id="close-scorecard-btn" class="secondary" onclick="closeScorecard()">← Back</button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -332,56 +413,183 @@
     let playbackStart = 0, rafId = null, canvas = null, ctx = null;
     let micStream, micProcessor, micSource, currentMicPitch = -1, currentExpected = null;
     let pitchDebugCounter = 0;
+    let currentWordIndex = -1;
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // INIT - AUTO-LOAD SONG
+    // SCORECARD SYSTEM
+    // ─────────────────────────────────────────────────────────────────────────────
+    let scoreCard = {
+        totalWords: pills.length,
+        wordScores: [],
+        accuracy: 0,
+        perfectWords: [],
+        improvementAreas: []
+    };
+
+    function initScoreCard() {
+        scoreCard = {
+            totalWords: pills.length,
+            wordScores: pills.map(p => ({
+                word: p.word,
+                expected: p.note,
+                sung: null,
+                status: null,
+                attempts: 0
+            })),
+            accuracy: 0,
+            perfectWords: [],
+            improvementAreas: []
+        };
+    }
+
+    function recordPitchAttempt(wordIndex, expectedNote, sungFreq) {
+        if (!scoreCard.wordScores[wordIndex]) return;
+        
+        const word = scoreCard.wordScores[wordIndex];
+        
+        if (sungFreq <= 0) {
+            if (!word.status) word.status = 'missed';
+        } else {
+            const expectedMidi = noteToMidi(expectedNote);
+            const sungMidi = freqToMidi(sungFreq);
+            const diff = sungMidi - expectedMidi;
+            
+            if (Math.abs(diff) <= 1) {
+                word.status = 'correct';
+            } else if (diff > 1) {
+                word.status = 'too-high';
+            } else {
+                word.status = 'too-low';
+            }
+        }
+        word.attempts++;
+    }
+
+    function calculateScore() {
+        const results = scoreCard.wordScores;
+        const correct = results.filter(w => w.status === 'correct').length;
+        const perfect = results.filter(w => w.status === 'correct' && w.attempts === 1);
+        const missed = results.filter(w => w.status === 'missed' || !w.status);
+        const tooHigh = results.filter(w => w.status === 'too-high');
+        const tooLow = results.filter(w => w.status === 'too-low');
+        
+        scoreCard.accuracy = Math.round((correct / scoreCard.totalWords) * 100);
+        scoreCard.perfectWords = perfect.map(w => w.word);
+        scoreCard.improvementAreas = [
+            ...(tooHigh.length > 0 ? [{ type: 'too-high', count: tooHigh.length, words: tooHigh.map(w => w.word) }] : []),
+            ...(tooLow.length > 0 ? [{ type: 'too-low', count: tooLow.length, words: tooLow.map(w => w.word) }] : []),
+            ...(missed.length > 0 ? [{ type: 'missed', count: missed.length, words: missed.map(w => w.word) }] : [])
+        ];
+    }
+
+    function showScorecard() {
+        calculateScore();
+        
+        // Show/hide sections
+        const perfectSection = document.getElementById('perfect-section');
+        const issuesSection = document.getElementById('issues-section');
+        const coachingBox = document.getElementById('coaching-box');
+        
+        // Perfect words
+        if (scoreCard.perfectWords.length > 0) {
+            perfectSection.style.display = 'block';
+            document.getElementById('perfect-words').innerHTML = scoreCard.perfectWords
+                .map(w => `<span class="word-tag correct">${w}</span>`)
+                .join('');
+        } else {
+            perfectSection.style.display = 'none';
+        }
+        
+        // Issues
+        if (scoreCard.improvementAreas.length > 0) {
+            issuesSection.style.display = 'block';
+            let issuesHTML = '';
+            scoreCard.improvementAreas.forEach(area => {
+                const icon = area.type === 'too-high' ? '📈' : area.type === 'too-low' ? '📉' : '❌';
+                const label = area.type === 'too-high' ? 'Singing Too High' : area.type === 'too-low' ? 'Singing Too Low' : 'Missed';
+                issuesHTML += `
+                    <div style="margin: 12px 0;">
+                        <div>${icon} <strong>${label}</strong> (${area.count} words)</div>
+                        <div class="word-list">
+                            ${area.words.map(w => `<span class="word-tag ${area.type === 'too-high' ? 'high' : area.type === 'too-low' ? 'low' : 'missed'}">${w}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+            document.getElementById('issues-content').innerHTML = issuesHTML;
+        } else {
+            issuesSection.style.display = 'none';
+        }
+        
+        // Coaching tips
+        if (scoreCard.improvementAreas.length > 0) {
+            coachingBox.style.display = 'block';
+            const tips = [];
+            scoreCard.improvementAreas.forEach(area => {
+                if (area.type === 'too-high') {
+                    tips.push('Try dropping your pitch on: ' + area.words.join(', '));
+                } else if (area.type === 'too-low') {
+                    tips.push('Try raising your pitch on: ' + area.words.join(', '));
+                } else {
+                    tips.push('Focus on singing clearer on: ' + area.words.join(', '));
+                }
+            });
+            document.getElementById('coaching-tips').innerHTML = tips
+                .map(tip => `<li>${tip}</li>`)
+                .join('');
+        } else {
+            coachingBox.style.display = 'none';
+        }
+        
+        // Update display
+        document.getElementById('scorecard-accuracy').textContent = scoreCard.accuracy + '%';
+        const correct = scoreCard.wordScores.filter(w => w.status === 'correct').length;
+        document.getElementById('scorecard-summary').textContent = `${correct} / ${scoreCard.totalWords} words correct`;
+        
+        // Show modal
+        document.getElementById('scorecard-modal').classList.add('show');
+    }
+
+    function closeScorecard() {
+        document.getElementById('scorecard-modal').classList.remove('show');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // INIT
     // ─────────────────────────────────────────────────────────────────────────────
     window.onload = async function() {
-        console.log('🎤 PitchPilot Demo Loading...');
-        console.log('📥 Attempting to fetch from:', DEMO_SONG_URL);
+        initScoreCard();
         
         setTimeout(async () => {
             try {
-                console.log('🔄 Fetching song...');
                 const response = await fetch(DEMO_SONG_URL);
-                
-                if (!response.ok) {
-                    throw new Error('HTTP ' + response.status + ': ' + response.statusText);
-                }
-                
-                console.log('✓ Response received, decoding...');
                 const arrayBuffer = await response.arrayBuffer();
-                console.log('✓ Got audio buffer, decoding...');
                 
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
                 
-                console.log('✅ Song loaded: ' + audioBuffer.duration.toFixed(2) + ' seconds');
-                
-                document.getElementById('loading-screen').classList.add('hidden');
                 document.getElementById('app-container').style.display = 'flex';
-                
                 initCanvas();
                 document.getElementById('play-btn').disabled = false;
-                document.getElementById('status-msg').textContent = 'Ready to play - tap Play!';
                 
-                // Auto-play after UI shows
                 setTimeout(() => {
                     window.play();
                 }, 500);
                 
             } catch (err) {
-                console.error('❌ Load error:', err.message);
-                document.getElementById('loading-screen').innerHTML = '<div style="color: #f44336; font-size: 18px; text-align: center;"><div>❌ Failed to load song</div><div style="font-size: 12px; margin-top: 10px; color: #aaa;">' + err.message + '</div></div>';
+                console.error('Load error:', err);
             }
         }, 1000);
     };
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // PLAYBACK CONTROL
+    // PLAYBACK
     // ─────────────────────────────────────────────────────────────────────────────
     window.play = function() {
         if (!audioBuffer) return;
+        
+        initScoreCard();
+        closeScorecard();
         
         if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
         if (audioContext.state === 'suspended') {
@@ -408,7 +616,6 @@
         playbackStart = audioContext.currentTime;
         document.getElementById('play-btn').disabled = true;
 
-        console.log('✅ Playback started');
         loop();
     }
 
@@ -429,116 +636,88 @@
         document.getElementById('play-btn').disabled = false;
         document.getElementById('big-word').textContent = '🎵';
         document.getElementById('note-display').textContent = '—';
-        document.getElementById('status-msg').textContent = 'Done! Try again?';
         document.getElementById('progress-fill').style.width = '0%';
+        
+        // Show scorecard
+        showScorecard();
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // MIC & PITCH DETECTION
+    // MIC & PITCH
     // ─────────────────────────────────────────────────────────────────────────────
     async function requestMicPermission() {
         try {
             if (micStream) return;
             
-            console.log('🎤 Requesting mic permission...');
             micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            console.log('✅ Mic permission granted');
             
-            // AUTO-ACTIVATE mic after permission granted
             setTimeout(() => {
-                console.log('🔧 Auto-activating microphone...');
-                window.toggleMic();
+                if (micStream && !micProcessor) {
+                    window.toggleMic();
+                }
             }, 300);
             
-            document.getElementById('mic-btn').disabled = false;
         } catch (err) {
-            console.log('ℹ️ Mic permission skipped:', err.message);
-            document.getElementById('mic-btn').disabled = true;
+            console.log('Mic skipped:', err.message);
         }
     }
 
     window.toggleMic = async function() {
         if (micProcessor) {
-            // Turn OFF
-            console.log('🎤 Turning mic OFF');
             if (micSource) {
                 try { micSource.disconnect(); } catch (e) {}
                 micSource = null;
-            }
-            if (window.scriptProcessor) {
-                try { window.scriptProcessor.disconnect(); } catch (e) {}
-                window.scriptProcessor = null;
             }
             micStream.getTracks().forEach(t => t.stop());
             micStream = null;
             micProcessor = null;
             document.getElementById('mic-btn').textContent = '🎤 Tap for Mic';
-            document.getElementById('status-msg').textContent = 'Mic off';
             return;
         }
 
         if (!micStream) {
             try {
-                console.log('🎤 Requesting microphone...');
                 micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                console.log('✅ Microphone granted');
             } catch (err) {
-                console.error('❌ Mic error:', err);
-                alert('Mic access denied: ' + err.message);
+                alert('Mic access denied');
                 return;
             }
         }
 
         try {
-            console.log('🎤 Activating pitch detection...');
-            
-            // Make sure we have the audioContext from song playback
             if (!audioContext) {
-                console.log('Creating AudioContext...');
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
             
-            console.log('AudioContext state:', audioContext.state, '| Type:', audioContext.constructor.name);
-            
             if (audioContext.state === 'suspended') {
-                console.log('Resuming suspended AudioContext...');
                 await audioContext.resume();
             }
 
-            console.log('Creating AnalyserNode...');
             micProcessor = audioContext.createAnalyser();
             micProcessor.fftSize = 4096;
-            console.log('✓ Analyser created');
             
-            // Use the working pattern that supports all browsers
-            console.log('Connecting microphone stream...');
             const createSourceFn = audioContext.createMediaStreamSource || audioContext.createMediaStreamAudioSource;
             
             if (!createSourceFn) {
-                throw new Error('AudioContext does not support createMediaStreamSource or createMediaStreamAudioSource');
+                throw new Error('AudioContext does not support createMediaStreamSource');
             }
             
             micSource = createSourceFn.call(audioContext, micStream);
             micSource.connect(micProcessor);
-            console.log('✓✓ Mic connected!');
             
             document.getElementById('mic-btn').textContent = '🎤 Mic ON ✓';
-            document.getElementById('status-msg').textContent = '🎤 Singing mode - start singing!';
 
             detectPitch();
 
         } catch (err) {
-            console.error('❌ Error:', err.message);
-            document.getElementById('status-msg').textContent = '❌ ' + err.message;
+            console.error('Mic error:', err.message);
             micProcessor = null;
-            micSource = null;
         }
     };
 
     // ─────────────────────────────────────────────────────────────────────────────
     // PITCH DETECTION
     // ─────────────────────────────────────────────────────────────────────────────
-    
     function detectPitch() {
         if (!micProcessor || !isPlaying) {
             requestAnimationFrame(detectPitch);
@@ -548,13 +727,6 @@
         const dataArray = new Uint8Array(micProcessor.frequencyBinCount);
         micProcessor.getByteTimeDomainData(dataArray);
         
-        let rms = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-            const normalized = (dataArray[i] - 128) / 128.0;
-            rms += normalized * normalized;
-        }
-        rms = Math.sqrt(rms / dataArray.length);
-        
         const floatArray = new Float32Array(dataArray.length);
         for (let i = 0; i < dataArray.length; i++) {
             floatArray[i] = (dataArray[i] - 128) / 128.0;
@@ -563,12 +735,9 @@
         const pitch = autoCorrelate(floatArray, audioContext.sampleRate);
         currentMicPitch = pitch;
 
-        pitchDebugCounter++;
-        if (pitchDebugCounter % 30 === 0) {
-            console.log('🎤 AUDIO: RMS=' + rms.toFixed(4) + ' | Pitch=' + (pitch > 0 ? pitch.toFixed(1) + ' Hz' : 'not detected'));
-        }
-
-        if (currentExpected && pitch > 0) {
+        if (currentExpected && pitch > 0 && currentWordIndex >= 0) {
+            recordPitchAttempt(currentWordIndex, currentExpected, pitch);
+            
             const expectedMidi = noteToMidi(currentExpected);
             const sungMidi = freqToMidi(pitch);
             const diff = sungMidi - expectedMidi;
@@ -610,8 +779,7 @@
         let rms = 0;
 
         for (let i = 0; i < SIZE; i++) {
-            const val = buffer[i];
-            rms += val * val;
+            rms += buffer[i] * buffer[i];
         }
         rms = Math.sqrt(rms / SIZE);
 
@@ -626,13 +794,9 @@
             correlation = 1 - (correlation / MAX_SAMPLES);
             if (correlation > 0.9) {
                 if (correlation > lastCorrelation) {
-                    let foundGoodCorrelation = false;
                     if (correlation > best_correlation) {
                         best_correlation = correlation;
                         best_offset = offset;
-                        foundGoodCorrelation = true;
-                    }
-                    if (foundGoodCorrelation) {
                         const shift = parabolicInterpolation(buffer, best_offset, MAX_SAMPLES);
                         return sampleRate / (best_offset + shift);
                     }
@@ -672,11 +836,18 @@
         document.getElementById('progress-fill').style.width = progress + '%';
 
         let currentWord = null;
-        for (let p of pills) {
+        let wordIdx = -1;
+        for (let i = 0; i < pills.length; i++) {
+            const p = pills[i];
             if (elapsed >= p.timeMs && elapsed <= p.timeMs + p.durMs) {
                 currentWord = p;
+                wordIdx = i;
                 break;
             }
+        }
+
+        if (wordIdx >= 0 && wordIdx !== currentWordIndex) {
+            currentWordIndex = wordIdx;
         }
 
         if (currentWord) {
